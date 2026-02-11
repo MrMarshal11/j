@@ -1,0 +1,209 @@
+:root {
+  --bg: #000;
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.72);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  overflow: hidden;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Helvetica,
+    Arial,
+    "Apple Color Emoji",
+    "Segoe UI Emoji";
+}
+
+#bg {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* HUD (bottom-left micro copy) */
+.hud {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.microText {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  letter-spacing: 0.12px;
+  text-shadow:
+    0 0 18px rgba(255, 45, 85, 0.1),
+    0 0 40px rgba(255, 45, 85, 0.06);
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 900ms ease,
+    transform 900ms ease;
+}
+
+.microText.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.stage {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.center {
+  position: relative;
+  width: min(760px, 92vw);
+  height: min(700px, 90vh);
+  display: grid;
+  place-items: center;
+}
+
+/* Rose */
+.roseShell {
+  width: min(420px, 80vw);
+  opacity: 0;
+  transform: translateY(10px) scale(0.995);
+  transition:
+    opacity 1200ms ease,
+    transform 1200ms ease;
+}
+
+.roseShell.on {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+#rose {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.stroke {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4.2;
+}
+
+.stem {
+  stroke: rgba(25, 255, 135, 0.85);
+  stroke-width: 4.1;
+}
+.leaf {
+  stroke: rgba(25, 255, 135, 0.85);
+  stroke-width: 4.1;
+}
+.petal {
+  stroke: rgba(255, 45, 85, 0.95);
+}
+
+.fill {
+  opacity: 0;
+  transition: opacity 1100ms ease;
+}
+
+.petalFill {
+  fill: url(#petalGrad);
+}
+.leafFill {
+  fill: url(#leafGrad);
+}
+
+.fill.on {
+  opacity: 0.92;
+}
+
+.bloomGlow {
+  position: absolute;
+  inset: -60px;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.86);
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(255, 45, 85, 0.22) 0%,
+    rgba(255, 45, 85, 0.1) 35%,
+    rgba(25, 255, 135, 0.04) 58%,
+    rgba(0, 0, 0, 0) 72%
+  );
+  transition:
+    opacity 1400ms ease,
+    transform 1400ms ease;
+}
+
+.bloomGlow.on {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Final message */
+.final {
+  position: absolute;
+  bottom: 10%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 1200ms ease,
+    transform 1200ms ease;
+  text-shadow:
+    0 0 22px rgba(255, 45, 85, 0.14),
+    0 0 60px rgba(255, 45, 85, 0.08);
+  user-select: none;
+}
+
+.final.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.line1 {
+  font-size: clamp(22px, 3vw, 30px);
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+
+.line2 {
+  margin-top: 8px;
+  font-size: clamp(16px, 2.2vw, 20px);
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roseShell,
+  .final,
+  .bloomGlow,
+  .fill,
+  .microText {
+    transition: none !important;
+  }
+}

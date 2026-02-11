@@ -1,35 +1,189 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>💝 For You</title>
+    <title>🌹</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <canvas id="bg"></canvas>
+    <canvas id="bg" aria-hidden="true"></canvas>
 
-    <main class="wrap">
-      <section class="card" aria-label="Valentine card">
-        <div class="badge">💌</div>
-        <h1 class="title">For you</h1>
+    <main class="stage" aria-label="Valentine animation">
+      <div class="hud">
+        <div class="microText" id="microText">hey…</div>
+      </div>
 
-        <div class="message">
-          <div class="typewriter" id="typewriter" aria-live="polite"></div>
-          <div class="cursor" aria-hidden="true"></div>
+      <div class="center">
+        <div class="roseShell" id="roseShell" aria-hidden="true">
+          <svg id="rose" viewBox="0 0 420 520" role="img" aria-label="Rose">
+            <defs>
+              <filter
+                id="roseGlow"
+                x="-60%"
+                y="-60%"
+                width="220%"
+                height="220%"
+              >
+                <feGaussianBlur stdDeviation="3.0" result="blur" />
+                <feColorMatrix
+                  in="blur"
+                  type="matrix"
+                  values="
+                  1 0 0 0 0
+                  0 0.22 0 0 0
+                  0 0 0.22 0 0
+                  0 0 0 1 0"
+                  result="tint"
+                />
+                <feMerge>
+                  <feMergeNode in="tint" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+
+              <linearGradient id="petalGrad" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0" stop-color="#ff2d55" />
+                <stop offset="0.55" stop-color="#b0002a" />
+                <stop offset="1" stop-color="#3e0010" />
+              </linearGradient>
+
+              <linearGradient id="leafGrad" x1="0" x2="1" y1="0" y2="0.8">
+                <stop offset="0" stop-color="#18ff86" />
+                <stop offset="1" stop-color="#083f24" />
+              </linearGradient>
+            </defs>
+
+            <!-- Rose is centered correctly (no “lollipop circle”) -->
+            <g filter="url(#roseGlow)" transform="translate(0,0)">
+              <!-- Stem -->
+              <path
+                class="stroke stem"
+                d="M210 488
+                 C214 432, 206 392, 214 348
+                 C222 304, 244 272, 238 238"
+              />
+              <!-- Thorns -->
+              <path
+                class="stroke stem"
+                d="M214 410 C200 410, 192 402, 188 392"
+              />
+              <path
+                class="stroke stem"
+                d="M214 372 C230 370, 242 360, 248 346"
+              />
+
+              <!-- Leaves outlines -->
+              <path
+                class="stroke leaf"
+                d="M214 394
+                 C170 388, 142 358, 134 326
+                 C164 330, 198 350, 214 370"
+              />
+              <path
+                class="stroke leaf"
+                d="M216 368
+                 C260 368, 294 346, 312 314
+                 C280 316, 246 332, 226 348"
+              />
+
+              <!-- Bud outer silhouette (more rosebud-shaped, not a circle) -->
+              <path
+                class="stroke petal"
+                d="M210 156
+                 C250 150, 282 172, 292 206
+                 C302 240, 288 282, 254 304
+                 C236 316, 222 318, 210 316
+                 C198 318, 184 316, 166 304
+                 C132 282, 118 240, 128 206
+                 C138 172, 170 150, 210 156"
+              />
+
+              <!-- Petal fold left -->
+              <path
+                class="stroke petal"
+                d="M206 176
+                 C184 180, 168 194, 164 214
+                 C160 236, 170 256, 190 268
+                 C202 276, 208 274, 210 268
+                 C196 260, 190 244, 190 230
+                 C190 210, 198 192, 214 184"
+              />
+
+              <!-- Petal fold right -->
+              <path
+                class="stroke petal"
+                d="M214 184
+                 C230 192, 238 210, 238 230
+                 C238 244, 232 260, 218 268
+                 C220 274, 226 276, 238 268
+                 C258 256, 268 236, 264 214
+                 C260 194, 244 180, 222 176"
+              />
+
+              <!-- Inner swirl / corolla highlight -->
+              <path
+                class="stroke petal"
+                d="M210 202
+                 C226 194, 242 206, 236 222
+                 C230 238, 206 238, 202 224
+                 C198 210, 210 202, 222 210
+                 C232 216, 222 230, 210 226"
+              />
+
+              <!-- Fills (fade in later) -->
+              <path
+                class="fill petalFill"
+                d="M210 156
+                 C250 150, 282 172, 292 206
+                 C302 240, 288 282, 254 304
+                 C236 316, 222 318, 210 316
+                 C198 318, 184 316, 166 304
+                 C132 282, 118 240, 128 206
+                 C138 172, 170 150, 210 156"
+              />
+              <path
+                class="fill petalFill"
+                d="M206 176
+                 C184 180, 168 194, 164 214
+                 C160 236, 170 256, 190 268
+                 C202 276, 208 274, 210 268
+                 C196 260, 190 244, 190 230
+                 C190 210, 198 192, 214 184 Z"
+              />
+              <path
+                class="fill petalFill"
+                d="M214 184
+                 C230 192, 238 210, 238 230
+                 C238 244, 232 260, 218 268
+                 C220 274, 226 276, 238 268
+                 C258 256, 268 236, 264 214
+                 C260 194, 244 180, 222 176 Z"
+              />
+
+              <path
+                class="fill leafFill"
+                d="M214 394
+                 C170 388, 142 358, 134 326
+                 C164 330, 198 350, 214 370 Z"
+              />
+              <path
+                class="fill leafFill"
+                d="M216 368
+                 C260 368, 294 346, 312 314
+                 C280 316, 246 332, 226 348 Z"
+              />
+            </g>
+          </svg>
+
+          <div class="bloomGlow" id="bloomGlow" aria-hidden="true"></div>
         </div>
 
-        <div class="controls">
-          <button id="surpriseBtn" class="btn">Tap for a surprise 💘</button>
-          <button id="replayBtn" class="btn ghost" title="Replay the note">
-            Replay ✨
-          </button>
+        <div class="final" id="final" aria-live="polite">
+          <div class="line1">발렌타인데이 축하해</div>
+          <div class="line2">보고 싶어</div>
         </div>
-
-        <footer class="footer">
-          <span id="signature">— from me</span>
-        </footer>
-      </section>
+      </div>
     </main>
 
     <script src="script.js"></script>
