@@ -46,7 +46,8 @@ body {
 }
 
 .microText {
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.88);
+
   font-size: 14px;
   letter-spacing: 0.12px;
   text-shadow:
