@@ -1,19 +1,18 @@
 // =====================================================
-// PHONE-FIRST Valentine (SPRITES) - FIXED GIRL + SIMPLER UX
-// Changes per your request:
-// - No "move up / shoot / come back" choreography.
-// - Sprites stay at their final (edge) positions and shoot beams from there.
-// - Sprites are positioned HIGHER and ABOVE the flower completely.
-// - Fix girl not showing: robust right-sprite placement + guaranteed placeholder.
-// - Keeps rose formation you like + hearts burst after bloom.
+// PHONE-FIRST Valentine (SPRITES) - SIMPLE + ROBUST
+// Per your request:
+// - Both sprites sit ABOVE the flower, fully visible, facing inward.
+// - Only the GUY shoots a subtle beam to the center light.
+// - Girl is positioned safely on-screen (no cropping).
+// - Rose formation + bloom + hearts stay as before.
 // - Ambient loop forever.
 // =====================================================
 
 const T = {
   skyIntro: 1100,
   spriteIn: 1100,
-  pauseBeforeBeam: 250,
-  beamPhase: 950,
+  pauseBeforeBeam: 260,
+  beamPhase: 1000,
   roseDraw: 3000,
   roseBloom: 1900,
 };
@@ -55,7 +54,7 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// ---------- Load sprites (cache-bust to avoid phone caching old deploy) ----------
+// ---------- Load sprites (cache-bust for phones) ----------
 function loadImage(path) {
   const img = new Image();
   img.crossOrigin = "anonymous";
@@ -162,7 +161,7 @@ function updateAndDrawHearts(dt) {
 
 // ---------- Beam + Center Glow ----------
 function drawBeam(x1, y1, x2, y2, intensity) {
-  const a = 0.075 * intensity;
+  const a = 0.08 * intensity;
   ctx.strokeStyle = `rgba(255,255,255,${a})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -170,7 +169,7 @@ function drawBeam(x1, y1, x2, y2, intensity) {
   ctx.lineTo(x2, y2);
   ctx.stroke();
 
-  ctx.strokeStyle = `rgba(255,45,85,${0.028 * intensity})`;
+  ctx.strokeStyle = `rgba(255,45,85,${0.03 * intensity})`;
   ctx.lineWidth = 6;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -190,18 +189,27 @@ function drawCenterGlow(x, y, now) {
   ctx.fill();
 }
 
-// ---------- Sprite aspect + placeholder ----------
+// ---------- Sprite helpers ----------
 function getDims(img, targetH, fallbackAspect = 0.7) {
   const ready = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
   const aspect = ready ? img.naturalWidth / img.naturalHeight : fallbackAspect;
   return { w: targetH * aspect, h: targetH, ready };
 }
 
-function drawSpriteOrPlaceholder(img, x, y, w, h, label) {
+function drawSpriteOrPlaceholder(img, x, y, w, h, label, flipX = false) {
   if (img.complete && img.naturalWidth > 0) {
-    ctx.drawImage(img, x, y, w, h);
+    ctx.save();
+    if (flipX) {
+      ctx.translate(x + w, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, w, h);
+    } else {
+      ctx.drawImage(img, x, y, w, h);
+    }
+    ctx.restore();
     return;
   }
+
   // placeholder
   ctx.fillStyle = "rgba(255,255,255,0.10)";
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
@@ -247,59 +255,63 @@ function render(now) {
   const cy = window.innerHeight * 0.44;
   drawCenterGlow(cx, cy, now);
 
-  // ---------------- PHONE UX LAYOUT ----------------
-  // Smaller and ABOVE the flower:
-  // Rose is around cy (~44% screen). Put sprites at ~22% screen.
+  // ---------- SPRITE LAYOUT: ABOVE FLOWER, BOTH FULLY VISIBLE ----------
   const spriteH = Math.min(160, window.innerHeight * 0.22);
   const guyD = getDims(guyImg, spriteH);
   const girlD = getDims(girlImg, spriteH);
 
-  const edgeMargin = 10;
-  const safeHalfW = Math.min(150, window.innerWidth * 0.25);
+  const edge = 12;
+  const safeGap = Math.min(110, window.innerWidth * 0.2); // keep open space in middle
 
-  // Targets (xLeft), always inside viewport and outside center safe zone.
-  const leftTarget = edgeMargin;
-  const rightTarget = window.innerWidth - edgeMargin - girlD.w;
+  // Final target positions (xLeft)
+  const leftTarget = edge;
+  const rightTarget = window.innerWidth - edge - girlD.w;
 
-  // Offscreen start
-  const leftStart = -guyD.w - 25;
-  const rightStart = window.innerWidth + 25;
+  // Ensure they DON'T invade the center
+  const leftMax = cx - safeGap - guyD.w;
+  const rightMin = cx + safeGap;
 
-  // enter
+  const finalLeft = Math.min(leftTarget, leftMax);
+  const finalRight = Math.max(rightTarget, rightMin);
+
+  // Enter from offscreen
+  const leftStart = -guyD.w - 30;
+  const rightStart = window.innerWidth + 30;
+
   const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
-  let leftX = lerp(leftStart, leftTarget, entryP);
-  let rightX = lerp(rightStart, rightTarget, entryP);
+  let leftX = lerp(leftStart, finalLeft, entryP);
+  let rightX = lerp(rightStart, finalRight, entryP);
 
-  // Hard clamp to always be visible
-  leftX = clamp(leftX, -guyD.w * 0.15, window.innerWidth - edgeMargin - guyD.w);
-  rightX = clamp(rightX, edgeMargin, window.innerWidth + girlD.w * 0.15);
+  // Hard clamp into view (prevents the "only a sliver" problem)
+  leftX = clamp(leftX, 0, window.innerWidth - edge - guyD.w);
+  rightX = clamp(rightX, 0, window.innerWidth - edge - girlD.w);
 
-  // Ensure they do NOT cross into the center safe zone
-  const leftMax = cx - safeHalfW - guyD.w;
-  if (leftX > leftMax) leftX = leftMax;
-
-  const rightMin = cx + safeHalfW;
-  if (rightX < rightMin) rightX = rightMin;
-
-  // Y position ABOVE the flower
+  // Place them above flower
   const float = Math.sin(now * 0.002) * 3.0;
   const spriteCenterY = window.innerHeight * 0.22 + float;
   const yTop = spriteCenterY - spriteH * 0.5;
 
-  drawSpriteOrPlaceholder(guyImg, leftX, yTop, guyD.w, guyD.h, "GUY");
-  drawSpriteOrPlaceholder(girlImg, rightX, yTop, girlD.w, girlD.h, "GIRL");
+  // Face inward: guy faces right (no flip), girl faces left (flipX = true)
+  drawSpriteOrPlaceholder(guyImg, leftX, yTop, guyD.w, guyD.h, "GUY", false);
+  drawSpriteOrPlaceholder(
+    girlImg,
+    rightX,
+    yTop,
+    girlD.w,
+    girlD.h,
+    "GIRL",
+    true,
+  );
 
-  // BEAMS FROM THIS POSITION (no choreography)
+  // ---------- ONLY GUY SHOOTS BEAM ----------
   if (tOnce > pPause && tOnce < pBeam) {
     const beamP = Math.sin(((tOnce - pPause) / (pBeam - pPause)) * Math.PI);
     const intensity = beamP;
 
-    const leftBeamX = leftX + guyD.w;
-    const rightBeamX = rightX;
-    const beamY = yTop + spriteH * 0.55; // from about "hands/center"
+    const beamStartX = leftX + guyD.w; // from guy's right side
+    const beamStartY = yTop + spriteH * 0.6;
 
-    drawBeam(leftBeamX, beamY, cx, cy, intensity);
-    drawBeam(rightBeamX, beamY, cx, cy, intensity);
+    drawBeam(beamStartX, beamStartY, cx, cy, intensity);
   }
 
   // Rose draw
