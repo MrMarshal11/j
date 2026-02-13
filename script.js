@@ -1,11 +1,10 @@
 // =====================================================
-// PHONE-FIRST Valentine (SPRITES) - SIMPLE + ROBUST
-// Per your request:
-// - Both sprites sit ABOVE the flower, fully visible, facing inward.
-// - Only the GUY shoots a subtle beam to the center light.
-// - Girl is positioned safely on-screen (no cropping).
-// - Rose formation + bloom + hearts stay as before.
-// - Ambient loop forever.
+// PHONE-FIRST Valentine (SPRITES) - TIGHT ABOVE ROSE + FACING EACH OTHER
+// Fixes per your request:
+// - Girl faces toward the guy (auto-flip ONLY if needed).
+// - Both sprites float RIGHT ABOVE the flower with a small gap.
+// - Only the guy shoots the beam.
+// - Robust layout: center-anchored placement guarantees both are visible.
 // =====================================================
 
 const T = {
@@ -63,6 +62,14 @@ function loadImage(path) {
 }
 const guyImg = loadImage("assets/guy.png");
 const girlImg = loadImage("assets/girl.png");
+
+// If YOUR girl sprite is already facing left (toward guy), set this to false.
+// If your girl sprite faces right by default, set this to true.
+const FLIP_GIRL = false;
+
+// If YOUR guy sprite is already facing right (toward girl), set this to false.
+// If your guy sprite faces left by default, set this to true.
+const FLIP_GUY = false;
 
 // ---------- Stars ----------
 const stars = [];
@@ -210,7 +217,6 @@ function drawSpriteOrPlaceholder(img, x, y, w, h, label, flipX = false) {
     return;
   }
 
-  // placeholder
   ctx.fillStyle = "rgba(255,255,255,0.10)";
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
   ctx.lineWidth = 2;
@@ -255,44 +261,59 @@ function render(now) {
   const cy = window.innerHeight * 0.44;
   drawCenterGlow(cx, cy, now);
 
-  // ---------- SPRITE LAYOUT: ABOVE FLOWER, BOTH FULLY VISIBLE ----------
-  const spriteH = Math.min(160, window.innerHeight * 0.22);
+  // ---------- EXACTLY ABOVE THE FLOWER ----------
+  // Put sprite center slightly above the rose center.
+  const spriteH = Math.min(165, window.innerHeight * 0.23);
   const guyD = getDims(guyImg, spriteH);
   const girlD = getDims(girlImg, spriteH);
 
-  const edge = 12;
-  const safeGap = Math.min(110, window.innerWidth * 0.2); // keep open space in middle
+  // Small gap between them (phone-friendly)
+  const gap = Math.min(22, window.innerWidth * 0.06);
 
-  // Final target positions (xLeft)
-  const leftTarget = edge;
-  const rightTarget = window.innerWidth - edge - girlD.w;
+  // Center-anchored layout so they're ALWAYS visible and never crop:
+  // Left sprite ends at (cx - gap/2), right sprite begins at (cx + gap/2)
+  let leftTargetX = cx - gap / 2 - guyD.w;
+  let rightTargetX = cx + gap / 2;
 
-  // Ensure they DON'T invade the center
-  const leftMax = cx - safeGap - guyD.w;
-  const rightMin = cx + safeGap;
+  // Clamp into screen (prevents cropping issues on narrow phones)
+  const edge = 10;
+  leftTargetX = clamp(leftTargetX, edge, window.innerWidth - edge - guyD.w);
+  rightTargetX = clamp(rightTargetX, edge, window.innerWidth - edge - girlD.w);
 
-  const finalLeft = Math.min(leftTarget, leftMax);
-  const finalRight = Math.max(rightTarget, rightMin);
+  // If clamping caused overlap, push them apart minimally while staying on-screen
+  const overlap = leftTargetX + guyD.w + gap - rightTargetX;
+  if (overlap > 0) {
+    const shift = overlap / 2;
+    leftTargetX = clamp(
+      leftTargetX - shift,
+      edge,
+      window.innerWidth - edge - guyD.w,
+    );
+    rightTargetX = clamp(
+      rightTargetX + shift,
+      edge,
+      window.innerWidth - edge - girlD.w,
+    );
+  }
 
-  // Enter from offscreen
-  const leftStart = -guyD.w - 30;
-  const rightStart = window.innerWidth + 30;
-
+  // Entry from slightly above + fade-in movement feels nice on phone
   const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
-  let leftX = lerp(leftStart, finalLeft, entryP);
-  let rightX = lerp(rightStart, finalRight, entryP);
+  const leftStartX = leftTargetX - 30;
+  const rightStartX = rightTargetX + 30;
 
-  // Hard clamp into view (prevents the "only a sliver" problem)
-  leftX = clamp(leftX, 0, window.innerWidth - edge - guyD.w);
-  rightX = clamp(rightX, 0, window.innerWidth - edge - girlD.w);
-
-  // Place them above flower
   const float = Math.sin(now * 0.002) * 3.0;
-  const spriteCenterY = window.innerHeight * 0.22 + float;
-  const yTop = spriteCenterY - spriteH * 0.5;
+  const spriteCenterY = cy - 90 + float; // "right above the flower"
+  const yTopTarget = spriteCenterY - spriteH * 0.5;
+  const yTopStart = yTopTarget - 18;
 
-  // Face inward: guy faces right (no flip), girl faces left (flipX = true)
-  drawSpriteOrPlaceholder(guyImg, leftX, yTop, guyD.w, guyD.h, "GUY", false);
+  const leftX = lerp(leftStartX, leftTargetX, entryP);
+  const rightX = lerp(rightStartX, rightTargetX, entryP);
+  const yTop = lerp(yTopStart, yTopTarget, entryP);
+
+  // Face each other:
+  // - Guy on left should face right -> flip if your asset faces left by default
+  // - Girl on right should face left -> flip if your asset faces right by default
+  drawSpriteOrPlaceholder(guyImg, leftX, yTop, guyD.w, guyD.h, "GUY", FLIP_GUY);
   drawSpriteOrPlaceholder(
     girlImg,
     rightX,
@@ -300,7 +321,7 @@ function render(now) {
     girlD.w,
     girlD.h,
     "GIRL",
-    true,
+    FLIP_GIRL,
   );
 
   // ---------- ONLY GUY SHOOTS BEAM ----------
@@ -328,10 +349,9 @@ function render(now) {
     finalEl.classList.add("on");
   }
 
-  // Hearts after bloom completes (from corolla at center light)
+  // Hearts after bloom completes
   const COROLLA_X = cx;
   const COROLLA_Y = cy - 8;
-
   if (!heartsBursted && tOnce >= pBloom) {
     heartsBursted = true;
     burstHearts(COROLLA_X, COROLLA_Y);
