@@ -36,6 +36,42 @@ body {
   display: block;
 }
 
+/* Top-middle button (slightly above) */
+#musicBtn {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  user-select: none;
+
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+#musicBtn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+#musicBtn:active {
+  transform: translateX(-50%) scale(0.985);
+}
+
 /* HUD (bottom-left micro copy) */
 .hud {
   position: fixed;
@@ -47,7 +83,6 @@ body {
 
 .microText {
   color: rgba(255, 255, 255, 0.88);
-
   font-size: 14px;
   letter-spacing: 0.12px;
   text-shadow:
