@@ -9,11 +9,6 @@
   <body>
     <canvas id="bg" aria-hidden="true"></canvas>
 
-    <!-- Top-middle button -->
-    <button id="musicBtn" type="button" aria-label="Play music">
-      click me!
-    </button>
-
     <main class="stage" aria-label="Valentine animation">
       <div class="hud">
         <div class="microText" id="microText">~ ~ ~</div>
@@ -59,6 +54,7 @@
               </linearGradient>
             </defs>
 
+            <!-- Rose is centered correctly (no “lollipop circle”) -->
             <g filter="url(#roseGlow)" transform="translate(0,0)">
               <!-- Stem -->
               <path
@@ -91,7 +87,7 @@
                  C280 316, 246 332, 226 348"
               />
 
-              <!-- Bud outer silhouette -->
+              <!-- Bud outer silhouette (more rosebud-shaped, not a circle) -->
               <path
                 class="stroke petal"
                 d="M210 156
@@ -125,7 +121,7 @@
                  C260 194, 244 180, 222 176"
               />
 
-              <!-- Inner swirl -->
+              <!-- Inner swirl / corolla highlight -->
               <path
                 class="stroke petal"
                 d="M210 202
@@ -135,7 +131,7 @@
                  C232 216, 222 230, 210 226"
               />
 
-              <!-- Fills -->
+              <!-- Fills (fade in later) -->
               <path
                 class="fill petalFill"
                 d="M210 156
@@ -189,9 +185,6 @@
         </div>
       </div>
     </main>
-
-    <!-- Audio (click starts it; autoplay blocked unless user gesture) -->
-    <audio id="song" preload="metadata"></audio>
 
     <script src="script.js"></script>
   </body>

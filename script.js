@@ -1,423 +1,560 @@
-/* eslint-disable no-console */
-(() => {
-  // =========================
-  // CONFIG
-  // =========================
+// =====================================================
+// PHONE-FIRST Valentine (SPRITES) - MOBILE SAFE + CONTINUOUS SKY HEARTS AFTER FINISH
+// - Hearts: continuous slow stream of tiny cute hearts drifting down from the top
+//           starts AFTER the flower is finished (after roseDraw completes),
+//           fades out and vanishes before traveling too far.
+// - Names above sprites:
+//    Guy:  "Me (cool guy)"
+//    Girl: 'You ("은서")'
+// - Uses visualViewport for iOS Safari sizing
+// - Never overlaps sprites; auto-scales down on narrow phones
+// - Beam ALWAYS from GUY sprite (respects FLIP_GUY)
+// =====================================================
 
-  // 1) SONG FILE (put your song in /assets and name it here)
-  // Example: assets/song.mp3
-  const SONG_SRC = "assets/song.mp3";
+const T = {
+  skyIntro: 1100,
+  spriteIn: 1100,
+  pauseBeforeBeam: 260,
+  beamPhase: 1000,
+  roseDraw: 3000,
+  roseBloom: 1900,
 
-  // 2) Heart PNGs (you said you have two pngs in assets)
-  // If your filenames differ, change these to match.
-  const HEART_PNGS = ["assets/heart1.png", "assets/heart2.png"];
+  // When the flower is "finished" for the heart stream start:
+  // We treat end of roseDraw as "created". (Bloom can happen after.)
+  heartStreamStartDelay: 250,
+};
 
-  // 3) Bigger hearts: size range (px)
-  const HEART_SIZE_MIN = 28; // bigger than "tiny"
-  const HEART_SIZE_MAX = 84; // bigger than before
+const TOTAL_ONCE =
+  T.skyIntro +
+  T.spriteIn +
+  T.pauseBeforeBeam +
+  T.beamPhase +
+  T.roseDraw +
+  T.roseBloom;
 
-  // 4) Hearts density
-  const AMBIENT_HEARTS_PER_SEC = 2.2; // background drifting hearts
-  const CLICK_HEART_BURST_COUNT = [10, 18]; // min/max hearts on click burst
+const canvas = document.getElementById("bg");
+const ctx = canvas.getContext("2d", { alpha: true });
 
-  // 5) Every 3 clicks: play from beginning
-  const PLAY_FROM_START_EVERY_N_CLICKS = 3;
+const roseShell = document.getElementById("roseShell");
+const bloomGlow = document.getElementById("bloomGlow");
+const finalEl = document.getElementById("final");
 
-  // =========================
-  // DOM
-  // =========================
-  const canvas = document.getElementById("bg");
-  const ctx = canvas.getContext("2d", { alpha: true });
+const roseSvg = document.getElementById("rose");
+const strokePaths = Array.from(roseSvg.querySelectorAll(".stroke"));
+const fillPaths = Array.from(roseSvg.querySelectorAll(".fill"));
 
-  const roseShell = document.getElementById("roseShell");
-  const bloomGlow = document.getElementById("bloomGlow");
-  const finalEl = document.getElementById("final");
-  const microText = document.getElementById("microText");
+// ---------- Facing toggles ----------
+const FLIP_GIRL = false; // set true if your girl sprite faces RIGHT by default
+const FLIP_GUY = false; // set true if your guy sprite faces LEFT by default
 
-  const musicBtn = document.getElementById("musicBtn");
-  const song = document.getElementById("song");
+// ---------- Name labels ----------
+const GUY_LABEL = "Me (cool guy)";
+const GIRL_LABEL = 'You ("은서")';
 
-  song.src = SONG_SRC;
-  song.preload = "metadata";
+// ---------- Utils ----------
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
-  // =========================
-  // UTIL
-  // =========================
-  const rand = (min, max) => Math.random() * (max - min) + min;
-  const randi = (min, max) => Math.floor(rand(min, max + 1));
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// ---------- Mobile-safe viewport sizing ----------
+let DPR = 1;
+let VW = 0;
+let VH = 0;
 
-  function dpr() {
-    return Math.max(1, Math.min(2.25, window.devicePixelRatio || 1));
-  }
+function getViewport() {
+  const vv = window.visualViewport;
+  const w = vv ? vv.width : window.innerWidth;
+  const h = vv ? vv.height : window.innerHeight;
+  return {
+    w: Math.max(1, Math.floor(w)),
+    h: Math.max(1, Math.floor(h)),
+  };
+}
 
-  function resize() {
-    const ratio = dpr();
-    canvas.width = Math.floor(window.innerWidth * ratio);
-    canvas.height = Math.floor(window.innerHeight * ratio);
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  }
+function resize() {
+  DPR = Math.max(1, window.devicePixelRatio || 1);
 
-  window.addEventListener("resize", resize);
+  const v = getViewport();
+  VW = v.w;
+  VH = v.h;
 
-  // =========================
-  // ROSE TIMELINE
-  // =========================
-  function startRoseSequence() {
-    // Fade in HUD microcopy
-    const microLines = [
-      "~ ~ ~",
-      "for you",
-      "💗",
-      "발렌타인데이",
-      "보고 싶어",
-      "~ ~ ~",
-    ];
+  canvas.width = Math.floor(VW * DPR);
+  canvas.height = Math.floor(VH * DPR);
+  canvas.style.width = VW + "px";
+  canvas.style.height = VH + "px";
 
-    let idx = 0;
-    microText.classList.add("on");
-    microText.textContent = microLines[idx];
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
 
-    const microTimer = setInterval(() => {
-      idx = (idx + 1) % microLines.length;
-      microText.textContent = microLines[idx];
-    }, 1400);
+window.addEventListener("resize", resize);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", resize);
+  window.visualViewport.addEventListener("scroll", resize);
+}
+resize();
 
-    // Show rose
-    setTimeout(() => {
-      roseShell.classList.add("on");
-    }, 650);
+// ---------- Load sprites ----------
+function loadImage(path) {
+  const img = new Image();
+  // If your sprites fail ONLY on phone, try commenting this out (CORS headers).
+  img.crossOrigin = "anonymous";
+  img.src = `${path}?v=${Date.now()}`;
+  return img;
+}
 
-    // Fade fills
-    setTimeout(() => {
-      document
-        .querySelectorAll(".fill")
-        .forEach((el) => el.classList.add("on"));
-      bloomGlow.classList.add("on");
-    }, 1600);
+const guyImg = loadImage("assets/guy.png");
+const girlImg = loadImage("assets/girl.png");
 
-    // Final text
-    setTimeout(() => {
-      finalEl.classList.add("on");
-    }, 2700);
-
-    // Keep micro text running; if you want it to stop later:
-    // setTimeout(() => clearInterval(microTimer), 15000);
-    void microTimer;
-  }
-
-  // =========================
-  // HEART IMAGES (with fallback)
-  // =========================
-  const heartImgs = [];
-  let imagesReady = false;
-
-  function loadImages() {
-    const loaders = HEART_PNGS.map((src) => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve({ ok: true, img });
-        img.onerror = () => resolve({ ok: false, img: null });
-        img.src = src;
-      });
-    });
-
-    return Promise.all(loaders).then((results) => {
-      results.forEach((r) => {
-        if (r.ok && r.img) heartImgs.push(r.img);
-      });
-      imagesReady = heartImgs.length > 0;
+// ---------- Stars ----------
+const stars = [];
+function seedStars() {
+  stars.length = 0;
+  const count = Math.min(180, Math.floor(VW * 0.18));
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: Math.random() * VW,
+      y: Math.random() * VH,
+      r: Math.random() * 1.4 + 0.4,
+      sp: Math.random() * 0.1 + 0.02,
+      a: Math.random() * 0.55 + 0.2,
     });
   }
+}
+seedStars();
+window.addEventListener("resize", seedStars);
+if (window.visualViewport)
+  window.visualViewport.addEventListener("resize", seedStars);
 
-  function drawFallbackHeart(x, y, size, rot, alpha) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rot);
-    ctx.globalAlpha = alpha;
+// ---------- Rose stroke setup ----------
+const lengths = strokePaths.map((p) => p.getTotalLength());
+const totalLen = lengths.reduce((a, b) => a + b, 0);
 
-    // Vector heart
-    const s = size / 40;
-    ctx.scale(s, s);
+function resetRose() {
+  strokePaths.forEach((p) => {
+    const len = p.getTotalLength();
+    p.style.strokeDasharray = `${len}`;
+    p.style.strokeDashoffset = `${len}`;
+  });
+}
+function setDrawProgress(p) {
+  let rem = totalLen * clamp(p, 0, 1);
+  for (let i = 0; i < strokePaths.length; i++) {
+    const len = lengths[i];
+    const shown = clamp(rem / len, 0, 1);
+    strokePaths[i].style.strokeDashoffset = `${len * (1 - shown)}`;
+    rem -= len;
+  }
+}
+resetRose();
 
+// ---------- Beam + Center Glow ----------
+function drawBeam(x1, y1, x2, y2, intensity) {
+  const a = 0.085 * intensity;
+  ctx.strokeStyle = `rgba(255,255,255,${a})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(255,45,85,${0.03 * intensity})`;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function drawCenterGlow(x, y, now) {
+  const pulse = 0.85 + Math.sin(now * 0.0015) * 0.15;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 235);
+  g.addColorStop(0, `rgba(255,45,85,${0.38 * pulse})`);
+  g.addColorStop(0.55, `rgba(255,45,85,${0.13 * pulse})`);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, 235, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ---------- Rounded-rect fallback ----------
+function roundRectPath(x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  if (typeof ctx.roundRect === "function") {
     ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.bezierCurveTo(0, -28, -30, -28, -30, -5);
-    ctx.bezierCurveTo(-30, 14, -10, 25, 0, 35);
-    ctx.bezierCurveTo(10, 25, 30, 14, 30, -5);
-    ctx.bezierCurveTo(30, -28, 0, -28, 0, -10);
-    ctx.closePath();
-
-    ctx.fillStyle = "rgba(255,45,85,0.9)";
-    ctx.shadowColor = "rgba(255,45,85,0.28)";
-    ctx.shadowBlur = 18;
-    ctx.fill();
-
-    ctx.restore();
+    ctx.roundRect(x, y, w, h, rr);
+    return;
   }
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+}
 
-  // =========================
-  // PARTICLES
-  // =========================
-  const hearts = [];
-  const sparkles = [];
+// ---------- Sprite helpers ----------
+function getDims(img, targetH, fallbackAspect = 0.7) {
+  const ready = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+  const aspect = ready ? img.naturalWidth / img.naturalHeight : fallbackAspect;
+  return { w: targetH * aspect, h: targetH, ready, aspect };
+}
 
-  function spawnSparkle() {
-    sparkles.push({
-      x: rand(0, window.innerWidth),
-      y: rand(0, window.innerHeight),
-      r: rand(0.8, 2.2),
-      a: rand(0.12, 0.55),
-      life: rand(900, 2400),
-      t: 0,
-    });
-  }
-
-  function spawnHeart(x, y, burst = false) {
-    const size =
-      rand(HEART_SIZE_MIN, HEART_SIZE_MAX) * (burst ? rand(0.9, 1.25) : 1);
-    const driftX = burst ? rand(-220, 220) : rand(-35, 35);
-    const driftY = burst ? rand(-520, -260) : rand(-170, -90);
-
-    hearts.push({
-      x,
-      y,
-      size,
-      rot: rand(-0.6, 0.6),
-      rotSpd: rand(-0.004, 0.004),
-      vx: driftX / 1000,
-      vy: driftY / 1000,
-      wob: rand(0.6, 2.0),
-      wobSpd: rand(0.0015, 0.0045),
-      a: 0.0,
-      life: burst ? rand(1800, 3300) : rand(4200, 8200),
-      t: 0,
-      img:
-        imagesReady && heartImgs.length
-          ? heartImgs[Math.floor(Math.random() * heartImgs.length)]
-          : null,
-    });
-  }
-
-  function heartBurstAt(x, y) {
-    const n = randi(CLICK_HEART_BURST_COUNT[0], CLICK_HEART_BURST_COUNT[1]);
-    for (let i = 0; i < n; i++) {
-      spawnHeart(x + rand(-18, 18), y + rand(-18, 18), true);
-    }
-    // add a few sparkles too
-    for (let i = 0; i < 10; i++) spawnSparkle();
-  }
-
-  // =========================
-  // AUDIO RULES (random start; every 3 clicks = start at 0)
-  // =========================
-  let clickCount = 0;
-  let pendingSeek = null;
-
-  function safeDuration() {
-    const d = song.duration;
-    return Number.isFinite(d) && d > 0 ? d : null;
-  }
-
-  async function ensureMetadata() {
-    const d = safeDuration();
-    if (d) return d;
-
-    // Wait for loadedmetadata once
-    await new Promise((resolve) => {
-      const onMeta = () => {
-        song.removeEventListener("loadedmetadata", onMeta);
-        resolve();
-      };
-      song.addEventListener("loadedmetadata", onMeta, { once: true });
-      // in case browser needs a nudge
-      song.load();
-    });
-
-    return safeDuration();
-  }
-
-  async function playWithRule() {
-    clickCount += 1;
-
-    // If currently playing, restart logic anyway (user explicitly requested behavior)
-    try {
-      song.pause();
-    } catch (_) {}
-
-    const d = await ensureMetadata();
-    // If we still can't get duration (some edge cases), just play from 0.
-    const duration = d || 0;
-
-    let startTime = 0;
-
-    const isNth = clickCount % PLAY_FROM_START_EVERY_N_CLICKS === 0;
-
-    if (!isNth && duration > 2.5) {
-      // Random start point, but not too close to the end
-      const tailBuffer = Math.min(2.0, duration * 0.08); // ensure some audio remains
-      const maxStart = Math.max(0, duration - tailBuffer);
-      startTime = rand(0, maxStart);
-      startTime = clamp(startTime, 0, Math.max(0, duration - 0.25));
+function drawSpriteOrPlaceholder(img, x, y, w, h, label, flipX = false) {
+  if (img.complete && img.naturalWidth > 0) {
+    ctx.save();
+    if (flipX) {
+      ctx.translate(x + w, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, w, h);
     } else {
-      startTime = 0;
+      ctx.drawImage(img, x, y, w, h);
     }
-
-    // Some browsers ignore immediate seek before play; do both
-    pendingSeek = startTime;
-
-    try {
-      song.currentTime = startTime;
-    } catch (_) {
-      // ignore
-    }
-
-    try {
-      await song.play();
-    } catch (err) {
-      // Autoplay policy shouldn't block because it's user click,
-      // but if it does, keep it graceful.
-      console.warn("Audio play blocked:", err);
-      return;
-    }
-
-    // If the browser snapped currentTime elsewhere, force seek once after play
-    if (pendingSeek != null) {
-      const seekTo = pendingSeek;
-      pendingSeek = null;
-      try {
-        song.currentTime = seekTo;
-      } catch (_) {}
-    }
+    ctx.restore();
+    return;
   }
 
-  // =========================
-  // DRAW
-  // =========================
-  let last = performance.now();
-  let heartSpawnAcc = 0;
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 2;
 
-  function tick(now) {
-    const dt = now - last;
-    last = now;
+  roundRectPath(x, y, w, h, 12);
+  ctx.fill();
+  ctx.stroke();
 
-    // Clear
-    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+  ctx.fillText(label, x + 10, y + 18);
+}
 
-    // Ambient spawns
-    heartSpawnAcc += dt * (AMBIENT_HEARTS_PER_SEC / 1000);
-    while (heartSpawnAcc >= 1) {
-      heartSpawnAcc -= 1;
-      spawnHeart(
-        rand(0, window.innerWidth),
-        window.innerHeight + rand(20, 80),
-        false,
-      );
-    }
+// ---------- Name label rendering ----------
+function drawNameLabel(text, centerX, topY) {
+  const padX = 10;
+  const padY = 6;
 
-    // Occasional sparkles
-    if (sparkles.length < 60 && Math.random() < 0.22) spawnSparkle();
+  const fontPx = clamp(Math.round(VW * 0.04), 12, 16);
+  ctx.font = `600 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
 
-    // Sparkles update/draw
-    for (let i = sparkles.length - 1; i >= 0; i--) {
-      const p = sparkles[i];
-      p.t += dt;
-      const u = p.t / p.life;
-      if (u >= 1) {
-        sparkles.splice(i, 1);
-        continue;
-      }
-      const a = p.a * (1 - u);
-      ctx.globalAlpha = a;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r + Math.sin(u * Math.PI) * 0.8, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.shadowColor = "rgba(255,255,255,0.5)";
-      ctx.shadowBlur = 14;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
+  const textW = ctx.measureText(text).width;
 
-    // Hearts update/draw
-    for (let i = hearts.length - 1; i >= 0; i--) {
-      const h = hearts[i];
-      h.t += dt;
-      const u = h.t / h.life;
-      if (u >= 1) {
-        hearts.splice(i, 1);
-        continue;
-      }
+  const boxW = textW + padX * 2;
+  const boxH = fontPx + padY * 2;
 
-      // fade in then out
-      const fadeIn = Math.min(1, u / 0.08);
-      const fadeOut = 1 - Math.max(0, (u - 0.72) / 0.28);
-      h.a = clamp(fadeIn * fadeOut, 0, 1);
+  const x = clamp(centerX - boxW / 2, 8, VW - 8 - boxW);
+  const y = clamp(topY - boxH - 6, 8, VH - 8 - boxH);
 
-      h.rot += h.rotSpd * dt;
-      const wobble = Math.sin(now * h.wobSpd) * h.wob;
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 1;
 
-      h.x += h.vx * dt;
-      h.y += h.vy * dt;
+  roundRectPath(x, y, boxW, boxH, 999);
+  ctx.fill();
+  ctx.stroke();
 
-      const x = h.x + wobble;
-      const y = h.y;
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.textBaseline = "top";
+  ctx.fillText(text, x + padX, y + padY);
+  ctx.restore();
+}
 
-      if (h.img) {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(h.rot);
-        ctx.globalAlpha = h.a;
+// ---------- Tiny sky hearts (continuous stream) ----------
+const skyHearts = [];
+let skyHeartAccumulator = 0;
 
-        const s = h.size;
-        ctx.shadowColor = "rgba(255,45,85,0.22)";
-        ctx.shadowBlur = 18;
+// Tiny heart shape (reused)
+function drawTinyHeart(x, y, sizePx, alpha, rot) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  const s = sizePx / 100;
+  ctx.scale(s, s);
 
-        ctx.drawImage(h.img, -s / 2, -s / 2, s, s);
-        ctx.restore();
-      } else {
-        drawFallbackHeart(x, y, h.size, h.rot, h.a);
-      }
-    }
+  ctx.beginPath();
+  ctx.moveTo(0, 30);
+  ctx.bezierCurveTo(0, 5, -30, 0, -30, -20);
+  ctx.bezierCurveTo(-30, -45, 0, -30, 0, -15);
+  ctx.bezierCurveTo(0, -30, 30, -45, 30, -20);
+  ctx.bezierCurveTo(30, 0, 0, 5, 0, 30);
+  ctx.closePath();
 
-    ctx.globalAlpha = 1;
+  ctx.fillStyle = `rgba(255,120,170,${alpha})`;
+  ctx.fill();
+  ctx.restore();
+}
 
-    requestAnimationFrame(tick);
-  }
+function spawnSkyHeart() {
+  // Spawn from slightly above the top edge, spread across the width
+  const x = Math.random() * VW;
 
-  // =========================
-  // EVENTS
-  // =========================
-  musicBtn.addEventListener("click", async (e) => {
-    // Heart burst around the button area
-    const r = musicBtn.getBoundingClientRect();
-    const x = r.left + r.width / 2;
-    const y = r.top + r.height / 2;
+  // Start high so they "appear from the sky"
+  const y = -10 - Math.random() * 30;
 
-    heartBurstAt(x, y);
+  // Slow drift down, tiny size, gentle sway
+  const baseFall = 0.18 + Math.random() * 0.22; // px per frame-ish (scaled by dt*60 below)
+  const vx = (Math.random() - 0.5) * 0.12;
+  const swayPhase = Math.random() * Math.PI * 2;
 
-    await playWithRule();
+  // Keep them from traveling too far: short lifespan + extra fade
+  const life = 1.7 + Math.random() * 0.9; // seconds
+
+  skyHearts.push({
+    x,
+    y,
+    vx,
+    vy: baseFall,
+    age: 0,
+    life,
+    size: 6 + Math.random() * 6, // tiny hearts
+    swayPhase,
+    rot: (Math.random() - 0.5) * 0.6,
+    rotSp: (Math.random() - 0.5) * 0.25,
+    // Fade out early and vanish before reaching far down
+    maxTravel: Math.min(160, VH * 0.22) + Math.random() * 30,
   });
 
-  // Optional: click anywhere makes a burst (nice touch)
-  window.addEventListener("pointerdown", (e) => {
-    // Don’t double-trigger burst if clicking the button (already handled)
-    const path = e.composedPath?.() || [];
-    if (path.includes(musicBtn)) return;
+  // Cap to avoid buildup on slow devices
+  if (skyHearts.length > 140) skyHearts.splice(0, skyHearts.length - 140);
+}
 
-    heartBurstAt(e.clientX, e.clientY);
-  });
-
-  // =========================
-  // START
-  // =========================
-  async function start() {
-    resize();
-    await loadImages();
-    startRoseSequence();
-    requestAnimationFrame(tick);
+function updateAndDrawSkyHearts(dt, enabled) {
+  if (enabled) {
+    // Spawn rate: small, steady stream
+    // dt in seconds; rate hearts/sec
+    const rate = 10; // hearts per second (tiny)
+    skyHeartAccumulator += dt * rate;
+    while (skyHeartAccumulator >= 1) {
+      skyHeartAccumulator -= 1;
+      spawnSkyHeart();
+    }
   }
 
-  start().catch((err) => console.error(err));
-})();
+  // Update/draw
+  for (let i = skyHearts.length - 1; i >= 0; i--) {
+    const h = skyHearts[i];
+    h.age += dt;
+    const p = clamp(h.age / h.life, 0, 1);
+
+    // Sway + drift
+    const sway = Math.sin(h.age * 3.2 + h.swayPhase) * 0.9;
+
+    h.x += (h.vx + sway * 0.02) * (dt * 60);
+    h.y += h.vy * (dt * 60);
+    h.rot += h.rotSp * dt;
+
+    // Fade: gentle, and also fade out as they travel downward
+    const traveled = h.y + 40; // approx since start is negative
+    const travelP = clamp(traveled / h.maxTravel, 0, 1);
+
+    // Not too bright; fade quicker near end of travel
+    const alpha = (1 - p) * 0.55 * (1 - travelP * 0.85);
+
+    drawTinyHeart(h.x, h.y, h.size, alpha, h.rot);
+
+    // Remove when done or when they went "not too far"
+    if (p >= 1 || travelP >= 1 || h.y > VH + 40) {
+      skyHearts.splice(i, 1);
+    }
+  }
+}
+
+// ---------- Layout (phone-first, never overlap, auto-fit) ----------
+function computeSpriteLayout(now) {
+  const cx = VW / 2;
+  const cy = VH * 0.44;
+
+  let spriteH = Math.min(160, VH * 0.235);
+  spriteH = Math.max(95, spriteH);
+
+  let gap = Math.min(28, VW * 0.075);
+  gap = Math.max(16, gap);
+
+  const edge = 10;
+
+  const float = Math.sin(now * 0.002) * 3.0;
+  const spriteCenterY = cy - Math.max(72, VH * 0.11) + float;
+
+  const gD0 = getDims(guyImg, spriteH);
+  const grD0 = getDims(girlImg, spriteH);
+
+  const maxUsableW = VW - edge * 2;
+  const requiredW = gD0.w + gap + grD0.w;
+
+  if (requiredW > maxUsableW) {
+    const scale = clamp(maxUsableW / requiredW, 0.5, 1);
+    spriteH = spriteH * scale;
+  }
+
+  const guyD = getDims(guyImg, spriteH);
+  const girlD = getDims(girlImg, spriteH);
+
+  const benchmarkLeftEdge = cx - gap / 2;
+  const benchmarkRightEdge = cx + gap / 2;
+
+  let guyFinalX = benchmarkLeftEdge - guyD.w;
+  let girlFinalX = benchmarkRightEdge;
+
+  guyFinalX = clamp(guyFinalX, edge, VW - edge - guyD.w);
+  girlFinalX = clamp(girlFinalX, edge, VW - edge - girlD.w);
+
+  const minGirlX = guyFinalX + guyD.w + gap;
+  if (girlFinalX < minGirlX) {
+    const overflow = minGirlX - girlFinalX;
+    girlFinalX = clamp(girlFinalX + overflow, edge, VW - edge - girlD.w);
+
+    const minGirlX2 = guyFinalX + guyD.w + gap;
+    if (girlFinalX < minGirlX2) {
+      const overflow2 = minGirlX2 - girlFinalX;
+      guyFinalX = clamp(guyFinalX - overflow2, edge, VW - edge - guyD.w);
+    }
+  }
+
+  let yTopTarget = spriteCenterY - spriteH * 0.5;
+  const maxYTop = cy - spriteH - 12;
+  yTopTarget = clamp(yTopTarget, edge + 18, Math.max(edge + 18, maxYTop));
+
+  return {
+    cx,
+    cy,
+    spriteH,
+    guyD,
+    girlD,
+    guyFinalX,
+    girlFinalX,
+    yTopTarget,
+  };
+}
+
+// ---------- Main loop ----------
+let start = null;
+let lastNow = null;
+
+function render(now) {
+  if (!start) start = now;
+  if (lastNow == null) lastNow = now;
+
+  const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000)); // seconds
+  lastNow = now;
+
+  const t = now - start;
+  const tOnce = Math.min(t, TOTAL_ONCE);
+
+  let cursor = 0;
+  const pIntro = (cursor += T.skyIntro);
+  const pIn = (cursor += T.spriteIn);
+  const pPause = (cursor += T.pauseBeforeBeam);
+  const pBeam = (cursor += T.beamPhase);
+  const pDraw = (cursor += T.roseDraw);
+  const pBloom = (cursor += T.roseBloom);
+
+  ctx.clearRect(0, 0, VW, VH);
+
+  // stars
+  for (const s of stars) {
+    s.y += s.sp;
+    if (s.y > VH) s.y = 0;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+    ctx.fill();
+  }
+
+  const L = computeSpriteLayout(now);
+  const { cx, cy, spriteH, guyD, girlD, guyFinalX, girlFinalX, yTopTarget } = L;
+
+  drawCenterGlow(cx, cy, now);
+
+  // Entry animation
+  const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
+
+  const slide = Math.min(36, VW * 0.08);
+  const guyStartX = guyFinalX - slide;
+  const girlStartX = girlFinalX + slide;
+
+  const yTopStart = yTopTarget - 18;
+
+  const guyX = lerp(guyStartX, guyFinalX, entryP);
+  const girlX = lerp(girlStartX, girlFinalX, entryP);
+  const yTop = lerp(yTopStart, yTopTarget, entryP);
+
+  // Draw sprites
+  drawSpriteOrPlaceholder(guyImg, guyX, yTop, guyD.w, guyD.h, "GUY", FLIP_GUY);
+  drawSpriteOrPlaceholder(
+    girlImg,
+    girlX,
+    yTop,
+    girlD.w,
+    girlD.h,
+    "GIRL",
+    FLIP_GIRL,
+  );
+
+  // Name labels
+  drawNameLabel(GUY_LABEL, guyX + guyD.w / 2, yTop);
+  drawNameLabel(GIRL_LABEL, girlX + girlD.w / 2, yTop);
+
+  // GUY ONLY BEAM
+  if (tOnce > pPause && tOnce < pBeam) {
+    const beamP = Math.sin(((tOnce - pPause) / (pBeam - pPause)) * Math.PI);
+    const intensity = beamP;
+
+    const handXFactor = 0.92;
+    const beamStartX = FLIP_GUY
+      ? guyX + guyD.w * (1 - handXFactor)
+      : guyX + guyD.w * handXFactor;
+
+    const beamStartY = yTop + spriteH * 0.62;
+
+    drawBeam(beamStartX, beamStartY, cx, cy, intensity);
+  }
+
+  // Rose draw
+  if (tOnce > pBeam) {
+    roseShell.classList.add("on");
+    const dp = clamp((tOnce - pBeam) / (pDraw - pBeam), 0, 1);
+    setDrawProgress(dp);
+  }
+
+  // Bloom (as before)
+  if (tOnce > pDraw) {
+    for (const f of fillPaths) f.classList.add("on");
+    bloomGlow.classList.add("on");
+    finalEl.classList.add("on");
+  }
+
+  // -----------------------------------------------------
+  // NEW: Continuous sky heart stream after flower is created
+  // "Created" moment = end of roseDraw (pDraw), plus small delay.
+  // -----------------------------------------------------
+  const flowerCreatedAt = pDraw + T.heartStreamStartDelay;
+  const heartStreamEnabled = tOnce >= flowerCreatedAt;
+
+  // Draw sky hearts AFTER everything else so they appear in front a bit
+  updateAndDrawSkyHearts(dt, heartStreamEnabled);
+
+  // Keep final state
+  if (t >= TOTAL_ONCE) {
+    setDrawProgress(1);
+    for (const f of fillPaths) f.classList.add("on");
+    bloomGlow.classList.add("on");
+    finalEl.classList.add("on");
+  }
+
+  requestAnimationFrame(render);
+}
+
+// Late-loading image safety
+[guyImg, girlImg].forEach((img) => {
+  img.addEventListener("load", () => {});
+  img.addEventListener("error", () => {});
+});
+
+requestAnimationFrame(render);
+
+// random
