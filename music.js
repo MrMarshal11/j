@@ -1,12 +1,5 @@
 // music.js - standalone audio controller (does not touch your existing animations)
 
-/**
- * Put your song file here.
- * Examples:
- *  - "./assets/song.mp3"
- *  - "./assets/music.mp3"
- *  - "./song.mp3"
- */
 const SONG_SRC = "./assets/song.mp3";
 
 (function initMusic() {
@@ -19,13 +12,14 @@ const SONG_SRC = "./assets/song.mp3";
   audio.src = SONG_SRC;
 
   let clickCount = 0;
+  let autoStarted = false;
+  let armedAutoStart = false;
 
   function setCancelEnabled(enabled) {
     cancelBtn.classList.toggle("isDisabled", !enabled);
     cancelBtn.disabled = !enabled;
   }
 
-  // Ensure initial state matches HTML
   setCancelEnabled(false);
 
   function clamp(v, min, max) {
@@ -43,17 +37,32 @@ const SONG_SRC = "./assets/song.mp3";
     try {
       audio.currentTime = 0;
     } catch (_) {}
-
     musicBtn.classList.remove("isPlaying");
     setCancelEnabled(false);
   }
 
-  function playFrom(timeSec) {
+  function tryPlay() {
+    return audio
+      .play()
+      .then(() => {
+        musicBtn.classList.add("isPlaying");
+        setCancelEnabled(true);
+        return true;
+      })
+      .catch(() => {
+        musicBtn.classList.remove("isPlaying");
+        // keep cancel disabled if nothing is playing
+        setCancelEnabled(false);
+        return false;
+      });
+  }
+
+  async function playFrom(timeSec) {
     try {
       audio.pause();
     } catch (_) {}
 
-    const seekAndPlay = () => {
+    const seekAndMaybePlay = async () => {
       const dur = Number.isFinite(audio.duration) ? audio.duration : 0;
       const safeDur = Math.max(0, dur - 0.05);
       const t = clamp(timeSec, 0, safeDur);
@@ -62,36 +71,36 @@ const SONG_SRC = "./assets/song.mp3";
         audio.currentTime = t;
       } catch (_) {}
 
-      audio
-        .play()
-        .then(() => {
-          musicBtn.classList.add("isPlaying");
-          setCancelEnabled(true);
-        })
-        .catch(() => {
-          musicBtn.classList.remove("isPlaying");
-          setCancelEnabled(false);
-        });
+      const ok = await tryPlay();
+      return ok;
     };
 
     if (!Number.isFinite(audio.duration) || audio.duration === 0) {
       audio.load();
-      audio.addEventListener("loadedmetadata", seekAndPlay, { once: true });
+      return new Promise((resolve) => {
+        audio.addEventListener(
+          "loadedmetadata",
+          async () => {
+            const ok = await seekAndMaybePlay();
+            resolve(ok);
+          },
+          { once: true },
+        );
+      });
     } else {
-      seekAndPlay();
+      return await seekAndMaybePlay();
     }
   }
 
+  // Button behavior stays the same
   musicBtn.addEventListener("click", () => {
     clickCount += 1;
 
-    // Every 3rd click plays from the beginning
     if (clickCount % 3 === 0) {
       playFrom(0);
       return;
     }
 
-    // Otherwise: random start point, then play to end
     const durKnown = Number.isFinite(audio.duration) && audio.duration > 0;
     const dur = durKnown ? audio.duration : 120;
     const minTailSeconds = 6;
@@ -117,15 +126,28 @@ const SONG_SRC = "./assets/song.mp3";
       setCancelEnabled(false);
     }
   });
-  // NEW: auto-start music the first time the rose finishes constructing
-  let autoStarted = false;
 
-  window.addEventListener("rose:finished", () => {
+  // NEW: auto-start when rose finishes (first time only)
+  window.addEventListener("rose:finished", async () => {
     if (autoStarted) return;
     autoStarted = true;
 
-    // Start from the beginning for the first time
-    // (If autoplay is blocked, user can tap "click me!" once.)
-    playFrom(0);
+    const ok = await playFrom(0);
+    if (!ok) {
+      // Autoplay blocked -> arm it for the next user gesture
+      armedAutoStart = true;
+    }
   });
+
+  // NEW: if autoplay was blocked, start as soon as user interacts anywhere
+  const unlockHandler = async () => {
+    if (!armedAutoStart) return;
+    armedAutoStart = false;
+    await playFrom(0);
+  };
+
+  // Capture multiple gesture types
+  window.addEventListener("pointerdown", unlockHandler, { passive: true });
+  window.addEventListener("touchstart", unlockHandler, { passive: true });
+  window.addEventListener("keydown", unlockHandler);
 })();

@@ -48,8 +48,8 @@ const FLIP_GIRL = false; // set true if your girl sprite faces RIGHT by default
 const FLIP_GUY = false; // set true if your guy sprite faces LEFT by default
 
 // ---------- Name labels ----------
-const GUY_LABEL = "Me (cool guy)";
-const GIRL_LABEL = 'You ("은서")';
+const GUY_LABEL = "Me (??)";
+const GIRL_LABEL = "You (은서)";
 
 // ---------- Utils ----------
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -86,6 +86,12 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 
+function fireRoseFinishedOnce() {
+  if (window.__roseFinishedFired) return;
+  window.__roseFinishedFired = true;
+  window.dispatchEvent(new CustomEvent("rose:finished"));
+}
+
 window.addEventListener("resize", resize);
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", resize);
@@ -104,26 +110,6 @@ function loadImage(path) {
 
 const guyImg = loadImage("assets/guy.png");
 const girlImg = loadImage("assets/girl.png");
-
-// ---------- Stars ----------
-const stars = [];
-function seedStars() {
-  stars.length = 0;
-  const count = Math.min(180, Math.floor(VW * 0.18));
-  for (let i = 0; i < count; i++) {
-    stars.push({
-      x: Math.random() * VW,
-      y: Math.random() * VH,
-      r: Math.random() * 1.4 + 0.4,
-      sp: Math.random() * 0.1 + 0.02,
-      a: Math.random() * 0.55 + 0.2,
-    });
-  }
-}
-seedStars();
-window.addEventListener("resize", seedStars);
-if (window.visualViewport)
-  window.visualViewport.addEventListener("resize", seedStars);
 
 // ---------- Rose stroke setup ----------
 const lengths = strokePaths.map((p) => p.getTotalLength());
@@ -267,6 +253,53 @@ function drawNameLabel(text, centerX, topY) {
 // ---------- Tiny sky hearts (continuous stream) ----------
 const skyHearts = [];
 let skyHeartAccumulator = 0;
+
+// ---------- Background Floating Hearts ----------
+const bgHearts = [];
+
+function seedBgHearts() {
+  bgHearts.length = 0;
+  const count = Math.min(40, Math.floor(VW * 0.05));
+
+  for (let i = 0; i < count; i++) {
+    bgHearts.push({
+      x: Math.random() * VW,
+      y: Math.random() * VH,
+      size: 18 + Math.random() * 22,
+      speed: 0.08 + Math.random() * 0.12,
+      sway: Math.random() * Math.PI * 2,
+      alpha: 0.08 + Math.random() * 0.1,
+      rot: (Math.random() - 0.5) * 0.5,
+    });
+  }
+}
+
+seedBgHearts();
+window.addEventListener("resize", seedBgHearts);
+if (window.visualViewport)
+  window.visualViewport.addEventListener("resize", seedBgHearts);
+
+function drawBgHeart(x, y, size, alpha, rot) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+
+  const s = size / 100;
+  ctx.scale(s, s);
+
+  ctx.beginPath();
+  ctx.moveTo(0, 30);
+  ctx.bezierCurveTo(0, 5, -30, 0, -30, -20);
+  ctx.bezierCurveTo(-30, -45, 0, -30, 0, -15);
+  ctx.bezierCurveTo(0, -30, 30, -45, 30, -20);
+  ctx.bezierCurveTo(30, 0, 0, 5, 0, 30);
+  ctx.closePath();
+
+  ctx.fillStyle = `rgba(255,45,85,${alpha})`;
+  ctx.fill();
+
+  ctx.restore();
+}
 
 // Tiny heart shape (reused)
 function drawTinyHeart(x, y, sizePx, alpha, rot) {
@@ -455,14 +488,17 @@ function render(now) {
 
   ctx.clearRect(0, 0, VW, VH);
 
-  // stars
-  for (const s of stars) {
-    s.y += s.sp;
-    if (s.y > VH) s.y = 0;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,255,255,${s.a})`;
-    ctx.fill();
+  // Background floating hearts
+  for (const h of bgHearts) {
+    h.y += h.speed;
+    h.x += Math.sin(now * 0.001 + h.sway) * 0.2;
+
+    if (h.y > VH + 40) {
+      h.y = -40;
+      h.x = Math.random() * VW;
+    }
+
+    drawBgHeart(h.x, h.y, h.size, h.alpha, h.rot);
   }
 
   const L = computeSpriteLayout(now);
