@@ -208,3 +208,59 @@ body {
     transition: none !important;
   }
 }
+
+/* Music buttons: top-middle */
+.musicControls {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  pointer-events: auto;
+}
+
+#musicBtn,
+#cancelBtn {
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  user-select: none;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 120ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease;
+}
+
+#musicBtn:hover,
+#cancelBtn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+#musicBtn:active,
+#cancelBtn:active {
+  transform: scale(0.98);
+}
+
+#musicBtn.isPlaying {
+  border-color: rgba(255, 45, 85, 0.55);
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.35),
+    0 0 28px rgba(255, 45, 85, 0.18);
+}
+
+#cancelBtn.isDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

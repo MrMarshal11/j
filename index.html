@@ -9,6 +9,15 @@
   <body>
     <canvas id="bg" aria-hidden="true"></canvas>
 
+    <!-- Music controls (standalone; does NOT affect your animation code) -->
+    <div class="musicControls" aria-label="Music controls">
+      <button id="musicBtn" type="button">click me!</button>
+      <button id="cancelBtn" type="button" class="isDisabled" disabled>
+        cancel
+      </button>
+      <audio id="song" preload="metadata"></audio>
+    </div>
+
     <main class="stage" aria-label="Valentine animation">
       <div class="hud">
         <div class="microText" id="microText">~ ~ ~</div>
@@ -187,5 +196,6 @@
     </main>
 
     <script src="script.js"></script>
+    <script src="music.js"></script>
   </body>
 </html>

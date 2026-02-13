@@ -21,11 +21,11 @@ const SONG_SRC = "./assets/song.mp3";
   let clickCount = 0;
 
   function setCancelEnabled(enabled) {
-    if (enabled) cancelBtn.classList.remove("isDisabled");
-    else cancelBtn.classList.add("isDisabled");
+    cancelBtn.classList.toggle("isDisabled", !enabled);
     cancelBtn.disabled = !enabled;
   }
 
+  // Ensure initial state matches HTML
   setCancelEnabled(false);
 
   function clamp(v, min, max) {
@@ -49,7 +49,6 @@ const SONG_SRC = "./assets/song.mp3";
   }
 
   function playFrom(timeSec) {
-    // Pause first to prevent overlap / weirdness
     try {
       audio.pause();
     } catch (_) {}
@@ -61,9 +60,7 @@ const SONG_SRC = "./assets/song.mp3";
 
       try {
         audio.currentTime = t;
-      } catch (_) {
-        // some browsers can be picky; ignore
-      }
+      } catch (_) {}
 
       audio
         .play()
@@ -72,23 +69,14 @@ const SONG_SRC = "./assets/song.mp3";
           setCancelEnabled(true);
         })
         .catch(() => {
-          // Autoplay restrictions shouldn't happen since it's click-driven,
-          // but if it does, keep UI sane.
           musicBtn.classList.remove("isPlaying");
           setCancelEnabled(false);
         });
     };
 
-    // If duration isn't known yet, wait for metadata
     if (!Number.isFinite(audio.duration) || audio.duration === 0) {
       audio.load();
-      audio.addEventListener(
-        "loadedmetadata",
-        () => {
-          seekAndPlay();
-        },
-        { once: true },
-      );
+      audio.addEventListener("loadedmetadata", seekAndPlay, { once: true });
     } else {
       seekAndPlay();
     }
@@ -105,11 +93,11 @@ const SONG_SRC = "./assets/song.mp3";
 
     // Otherwise: random start point, then play to end
     const durKnown = Number.isFinite(audio.duration) && audio.duration > 0;
-    const dur = durKnown ? audio.duration : 120; // fallback guess if metadata not ready
-    const minTailSeconds = 6; // ensure some remaining time
+    const dur = durKnown ? audio.duration : 120;
+    const minTailSeconds = 6;
     const maxStart = Math.max(0, dur - minTailSeconds);
-
     const start = maxStart > 0 ? rand(0, maxStart) : 0;
+
     playFrom(start);
   });
 
@@ -123,10 +111,7 @@ const SONG_SRC = "./assets/song.mp3";
     setCancelEnabled(false);
   });
 
-  // If user pauses via OS controls, reflect it
   audio.addEventListener("pause", () => {
-    // If paused but not ended, still allow cancel (optional).
-    // We'll keep cancel enabled only while playing.
     if (audio.ended || audio.currentTime === 0) {
       musicBtn.classList.remove("isPlaying");
       setCancelEnabled(false);
