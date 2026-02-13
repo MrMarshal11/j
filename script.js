@@ -1,25 +1,22 @@
 // =====================================================
-// PHONE-FIRST Valentine (SPRITE VERSION - GUARANTEED VISIBLE)
-// Fixes:
-// - Sprites were going out-of-frame due to bad stopRightBoundary math.
-// - Now sprites are ALWAYS placed using their REAL computed widths,
-//   clamped into the viewport, and never overlap the rose safe zone.
-// - Sprites are SMALLER (phone UX), sit near edges, fully visible,
-//   and never drift behind the rose.
-// - Beams originate from sprite inner edges.
-// - Hearts burst reliably from corolla.
-// - Ambient loop forever.
+// PHONE-FIRST Valentine (SPRITES) - DIAGNOSTIC BUILD
+// Goal: sprites MUST be visible OR show placeholders + status.
+// If you only see beams, it means images aren't loading.
+// This code will reveal that immediately on the phone.
+//
+// Expected files (case-sensitive on GitHub Pages):
+//   assets/guy.png
+//   assets/girl.png
 // =====================================================
 
 const T = {
-  skyIntro: 1400,
-  spriteIn: 1400,
-  pauseBeforeBeam: 320,
-  beamPhase: 1000,
-  roseDraw: 3100,
-  roseBloom: 2000,
+  skyIntro: 1200,
+  spriteIn: 1200,
+  pauseBeforeBeam: 280,
+  beamPhase: 900,
+  roseDraw: 3000,
+  roseBloom: 1900,
 };
-
 const TOTAL_ONCE =
   T.skyIntro +
   T.spriteIn +
@@ -38,8 +35,6 @@ const finalEl = document.getElementById("final");
 const roseSvg = document.getElementById("rose");
 const strokePaths = Array.from(roseSvg.querySelectorAll(".stroke"));
 const fillPaths = Array.from(roseSvg.querySelectorAll(".fill"));
-
-let start = null;
 
 // ---------- Utils ----------
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -61,24 +56,74 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// ---------- Load sprites ----------
-const guyImg = new Image();
-guyImg.src = "assets/guy.png";
+// ---------- Diagnostic overlay ----------
+let debugEl = document.getElementById("debugOverlay");
+if (!debugEl) {
+  debugEl = document.createElement("div");
+  debugEl.id = "debugOverlay";
+  debugEl.style.position = "fixed";
+  debugEl.style.left = "8px";
+  debugEl.style.top = "8px";
+  debugEl.style.zIndex = "99999";
+  debugEl.style.fontFamily =
+    "system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+  debugEl.style.fontSize = "12px";
+  debugEl.style.lineHeight = "1.25";
+  debugEl.style.padding = "8px 10px";
+  debugEl.style.borderRadius = "10px";
+  debugEl.style.background = "rgba(0,0,0,0.55)";
+  debugEl.style.color = "rgba(255,255,255,0.95)";
+  debugEl.style.backdropFilter = "blur(6px)";
+  debugEl.style.pointerEvents = "none";
+  debugEl.style.maxWidth = "92vw";
+  document.body.appendChild(debugEl);
+}
+const debug = {
+  guy: "loading",
+  girl: "loading",
+  lastErr: "",
+  startedAt: performance.now(),
+};
 
-const girlImg = new Image();
-girlImg.src = "assets/girl.png";
+// ---------- Load sprites (cache-bust to beat phone caching) ----------
+function loadImage(path) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  // cache bust: forces phone to grab latest deploy
+  img.src = `${path}?v=${Date.now()}`;
+  return img;
+}
+
+const guyImg = loadImage("assets/guy.png");
+const girlImg = loadImage("assets/girl.png");
+
+guyImg.onload = () =>
+  (debug.guy = `ok ${guyImg.naturalWidth}x${guyImg.naturalHeight}`);
+guyImg.onerror = () => {
+  debug.guy = "ERR (check path/case)";
+  debug.lastErr =
+    "Guy sprite failed to load. Check assets/guy.png exists EXACTLY (case-sensitive).";
+};
+
+girlImg.onload = () =>
+  (debug.girl = `ok ${girlImg.naturalWidth}x${girlImg.naturalHeight}`);
+girlImg.onerror = () => {
+  debug.girl = "ERR (check path/case)";
+  debug.lastErr =
+    "Girl sprite failed to load. Check assets/girl.png exists EXACTLY (case-sensitive).";
+};
 
 // ---------- Stars ----------
 const stars = [];
 function seedStars() {
   stars.length = 0;
-  const count = Math.min(220, Math.floor(window.innerWidth * 0.22));
+  const count = Math.min(180, Math.floor(window.innerWidth * 0.18));
   for (let i = 0; i < count; i++) {
     stars.push({
       x: Math.random() * window.innerWidth,
       y: Math.random() * window.innerHeight,
-      r: Math.random() * 1.5 + 0.4,
-      sp: Math.random() * 0.12 + 0.02,
+      r: Math.random() * 1.4 + 0.4,
+      sp: Math.random() * 0.1 + 0.02,
       a: Math.random() * 0.55 + 0.2,
     });
   }
@@ -113,13 +158,13 @@ const hearts = [];
 let heartsBursted = false;
 
 function burstHearts(x, y) {
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < 16; i++) {
     hearts.push({
       x,
       y,
-      vx: (Math.random() - 0.5) * 0.95,
-      vy: -Math.random() * 1.55 - 0.45,
-      life: 0.85 + Math.random() * 0.25,
+      vx: (Math.random() - 0.5) * 0.9,
+      vy: -Math.random() * 1.45 - 0.45,
+      life: 0.85 + Math.random() * 0.22,
       age: 0,
       size: 0.55 + Math.random() * 0.45,
       sway: Math.random() * Math.PI * 2,
@@ -154,7 +199,7 @@ function updateAndDrawHearts(dt) {
     h.vy += 0.02 * (dt * 60);
 
     const alpha = (1 - p) * 0.78;
-    const size = h.size * 15;
+    const size = h.size * 14;
     const sway = Math.sin(h.age * 7 + h.sway) * 2.0;
 
     drawHeart(h.x + sway, h.y, size / 100, alpha);
@@ -165,7 +210,7 @@ function updateAndDrawHearts(dt) {
 
 // ---------- Beam + Center Glow ----------
 function drawBeam(x1, y1, x2, y2, intensity) {
-  const a = 0.08 * intensity; // subtle
+  const a = 0.075 * intensity;
   ctx.strokeStyle = `rgba(255,255,255,${a})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -173,7 +218,7 @@ function drawBeam(x1, y1, x2, y2, intensity) {
   ctx.lineTo(x2, y2);
   ctx.stroke();
 
-  ctx.strokeStyle = `rgba(255,45,85,${0.03 * intensity})`;
+  ctx.strokeStyle = `rgba(255,45,85,${0.028 * intensity})`;
   ctx.lineWidth = 6;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -183,33 +228,44 @@ function drawBeam(x1, y1, x2, y2, intensity) {
 
 function drawCenterGlow(x, y, now) {
   const pulse = 0.85 + Math.sin(now * 0.0015) * 0.15;
-  const g = ctx.createRadialGradient(x, y, 0, x, y, 245);
-  g.addColorStop(0, `rgba(255,45,85,${0.4 * pulse})`);
-  g.addColorStop(0.55, `rgba(255,45,85,${0.14 * pulse})`);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 235);
+  g.addColorStop(0, `rgba(255,45,85,${0.38 * pulse})`);
+  g.addColorStop(0.55, `rgba(255,45,85,${0.13 * pulse})`);
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(x, y, 245, 0, Math.PI * 2);
+  ctx.arc(x, y, 235, 0, Math.PI * 2);
   ctx.fill();
 }
 
-// ---------- Sprite drawing (aspect preserved) ----------
-function getDims(img, height) {
-  if (!img.complete || img.naturalWidth === 0)
-    return { w: height * 0.7, h: height, ready: false };
-  const aspect = img.naturalWidth / img.naturalHeight;
-  return { w: height * aspect, h: height, ready: true };
+// ---------- Sprite aspect + placeholder ----------
+function getDims(img, targetH, fallbackAspect = 0.7) {
+  const ready = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+  const aspect = ready ? img.naturalWidth / img.naturalHeight : fallbackAspect;
+  return { w: targetH * aspect, h: targetH, ready };
 }
 
-function drawSprite(img, xLeft, yTop, w, h, alpha = 1) {
-  if (!img.complete || img.naturalWidth === 0) return;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(img, xLeft, yTop, w, h);
-  ctx.restore();
+function drawSpriteOrPlaceholder(img, x, y, w, h, label) {
+  if (img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, x, y, w, h);
+    return;
+  }
+  // Placeholder box so you ALWAYS see something
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+  ctx.fillText(label, x + 10, y + 18);
 }
 
 // ---------- Main loop ----------
+let start = null;
 function render(now) {
   if (!start) start = now;
   const t = now - start;
@@ -239,108 +295,111 @@ function render(now) {
   const cy = window.innerHeight * 0.44;
   drawCenterGlow(cx, cy, now);
 
-  // ---------- PHONE UX LAYOUT ----------
-  // Make sprites clearly visible on phones:
-  // - smaller height
-  // - slightly lower than rose center so they don't "sit behind" the rose
-  // - enforced safe zone around center so they never overlap rose area
-  const spriteH = Math.min(210, window.innerHeight * 0.3); // MUCH smaller
-  const guy = getDims(guyImg, spriteH);
-  const girl = getDims(girlImg, spriteH);
+  // ---------------- PHONE UX LAYOUT (ROBUST) ----------------
+  // Smaller sprites, lower than rose, never overlap the center safe zone.
+  const spriteH = Math.min(170, window.innerHeight * 0.24); // MUCH smaller for phone
+  const guyD = getDims(guyImg, spriteH);
+  const girlD = getDims(girlImg, spriteH);
 
-  // rose safe zone width (keep sprites outside this)
-  const safeHalfW = Math.min(160, window.innerWidth * 0.25);
-
-  // edges
   const edgeMargin = 10;
+  const safeHalfW = Math.min(150, window.innerWidth * 0.25);
 
-  // FINAL on-screen targets (fully visible + outside safe zone)
-  // Left sprite xLeft must be:
-  // - at least edgeMargin
-  // - at most (cx - safeHalfW - guy.w)
-  const leftTarget = clamp(edgeMargin, edgeMargin, cx - safeHalfW - guy.w);
+  // Targets: ALWAYS inside screen and outside safe zone.
+  // Left x in [edgeMargin, cx-safeHalfW-guyW]
+  // Right x in [cx+safeHalfW, screen-edgeMargin-girlW]
+  // If screen is too narrow, we fall back to edge positions and keep them visible anyway.
+  const leftMax = cx - safeHalfW - guyD.w;
+  const rightMin = cx + safeHalfW;
 
-  // Right sprite xLeft must be:
-  // - at least (cx + safeHalfW)
-  // - at most (windowWidth - edgeMargin - girl.w)
-  const rightTarget = clamp(
-    cx + safeHalfW,
-    cx + safeHalfW,
-    window.innerWidth - edgeMargin - girl.w,
-  );
+  let leftTarget = edgeMargin;
+  if (leftMax >= edgeMargin) leftTarget = edgeMargin; // hug edge
 
-  // Offscreen starts
-  const leftStart = -guy.w - 40;
-  const rightStart = window.innerWidth + 40;
+  let rightTarget = window.innerWidth - edgeMargin - girlD.w;
+  if (rightTarget < rightMin) rightTarget = rightMin;
 
-  // Entry interpolation
+  // Start offscreen
+  const leftStart = -guyD.w - 30;
+  const rightStart = window.innerWidth + 30;
+
+  // Enter
   const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
   let leftX = lerp(leftStart, leftTarget, entryP);
   let rightX = lerp(rightStart, rightTarget, entryP);
 
-  // When rose begins (after beam), sprites back away and STAY out
+  // Back away once rose begins (after beam phase)
   if (tOnce > pBeam) {
     const backP = easeInOut(clamp((tOnce - pBeam) / (pDraw - pBeam), 0, 1));
-    leftX = leftTarget - 120 * backP;
-    rightX = rightTarget + 120 * backP;
+    leftX = leftTarget - 110 * backP;
+    rightX = rightTarget + 110 * backP;
   }
 
-  // vertical placement: put sprites a bit LOWER than the rose center
-  const float = Math.sin(now * 0.002) * 4;
-  const yTop = cy + 85 + float - spriteH * 0.5;
+  // Hard clamp into (slightly beyond) screen so you can still SEE them.
+  leftX = clamp(leftX, -guyD.w * 0.25, window.innerWidth - edgeMargin - guyD.w);
+  rightX = clamp(
+    rightX,
+    edgeMargin,
+    window.innerWidth - edgeMargin - girlD.w + girlD.w * 0.25,
+  );
 
-  // GUARANTEE on-screen visibility (hard clamp)
-  leftX = clamp(leftX, -guy.w * 0.35, window.innerWidth - edgeMargin - guy.w);
-  rightX = clamp(rightX, edgeMargin, window.innerWidth + girl.w * 0.35);
+  // Vertical: LOWER than rose so they never "sit behind" flower.
+  const float = Math.sin(now * 0.002) * 3.5;
+  const yTop = cy + 105 + float - spriteH * 0.5;
 
-  // draw sprites
-  drawSprite(guyImg, leftX, yTop, guy.w, guy.h, 1);
-  drawSprite(girlImg, rightX, yTop, girl.w, girl.h, 1);
+  // Draw sprites (or placeholders)
+  drawSpriteOrPlaceholder(guyImg, leftX, yTop, guyD.w, guyD.h, "GUY");
+  drawSpriteOrPlaceholder(girlImg, rightX, yTop, girlD.w, girlD.h, "GIRL");
 
-  // beams: originate from inner edges of sprites
+  // Subtle beams from inner edges
   if (tOnce > pPause && tOnce < pBeam) {
     const beamP = Math.sin(((tOnce - pPause) / (pBeam - pPause)) * Math.PI);
     const intensity = beamP;
 
-    const leftBeamX = leftX + guy.w;
+    const leftBeamX = leftX + guyD.w;
     const rightBeamX = rightX;
+    const beamY = yTop + spriteH * 0.35;
 
-    // aim a bit above sprites toward rose center
-    drawBeam(leftBeamX, yTop + guy.h * 0.35, cx, cy, intensity);
-    drawBeam(rightBeamX, yTop + girl.h * 0.35, cx, cy, intensity);
+    drawBeam(leftBeamX, beamY, cx, cy, intensity);
+    drawBeam(rightBeamX, beamY, cx, cy, intensity);
   }
 
-  // rose draw
+  // Rose draw
   if (tOnce > pBeam) {
     roseShell.classList.add("on");
     const dp = clamp((tOnce - pBeam) / (pDraw - pBeam), 0, 1);
     setDrawProgress(dp);
   }
 
-  // bloom
+  // Bloom
   if (tOnce > pDraw) {
     for (const f of fillPaths) f.classList.add("on");
     bloomGlow.classList.add("on");
     finalEl.classList.add("on");
   }
 
-  // hearts burst after bloom completes (reliable)
+  // Hearts (reliable)
   const COROLLA_X = cx;
   const COROLLA_Y = cy - 8;
-
   if (!heartsBursted && tOnce >= pBloom) {
     heartsBursted = true;
     burstHearts(COROLLA_X, COROLLA_Y);
   }
   updateAndDrawHearts(1 / 60);
 
-  // keep final state after story ends
+  // Keep final state after story ends
   if (t >= TOTAL_ONCE) {
     setDrawProgress(1);
     for (const f of fillPaths) f.classList.add("on");
     bloomGlow.classList.add("on");
     finalEl.classList.add("on");
   }
+
+  // Update debug overlay (on phone)
+  const seconds = ((now - debug.startedAt) / 1000).toFixed(1);
+  debugEl.textContent =
+    `t=${seconds}s\n` +
+    `guy: ${debug.guy}\n` +
+    `girl: ${debug.girl}\n` +
+    (debug.lastErr ? `ERR: ${debug.lastErr}` : "");
 
   requestAnimationFrame(render);
 }
