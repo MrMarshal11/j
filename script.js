@@ -48,7 +48,7 @@ const FLIP_GIRL = false; // set true if your girl sprite faces RIGHT by default
 const FLIP_GUY = false; // set true if your guy sprite faces LEFT by default
 
 // ---------- Name labels ----------
-const GUY_LABEL = "Me (??)";
+const GUY_LABEL = "Me";
 const GIRL_LABEL = "You (은서)";
 
 // ---------- Utils ----------
@@ -254,24 +254,97 @@ function drawNameLabel(text, centerX, topY) {
 const skyHearts = [];
 let skyHeartAccumulator = 0;
 
-// ---------- Background Floating Hearts ----------
+// ---------- Background Floating Hearts (better: bigger + faster + layered) ----------
 const bgHearts = [];
 
 function seedBgHearts() {
   bgHearts.length = 0;
-  const count = Math.min(40, Math.floor(VW * 0.05));
+
+  // More hearts, but still mobile-safe
+  const count = clamp(Math.floor(VW * 0.09), 28, 85);
 
   for (let i = 0; i < count; i++) {
+    // Depth layer: 0 (far), 1 (mid), 2 (near)
+    const layer = Math.random() < 0.25 ? 2 : Math.random() < 0.6 ? 1 : 0;
+
+    const size =
+      layer === 2
+        ? 42 + Math.random() * 44 // near: big
+        : layer === 1
+          ? 26 + Math.random() * 30 // mid
+          : 18 + Math.random() * 22; // far
+
+    const speed =
+      layer === 2
+        ? 0.45 + Math.random() * 0.55 // near: faster
+        : layer === 1
+          ? 0.3 + Math.random() * 0.4
+          : 0.2 + Math.random() * 0.28;
+
+    const alpha =
+      layer === 2
+        ? 0.16 + Math.random() * 0.1
+        : layer === 1
+          ? 0.12 + Math.random() * 0.08
+          : 0.08 + Math.random() * 0.06;
+
     bgHearts.push({
+      layer,
       x: Math.random() * VW,
       y: Math.random() * VH,
-      size: 18 + Math.random() * 22,
-      speed: 0.08 + Math.random() * 0.12,
-      sway: Math.random() * Math.PI * 2,
-      alpha: 0.08 + Math.random() * 0.1,
-      rot: (Math.random() - 0.5) * 0.5,
+      size,
+      speed,
+      swayPhase: Math.random() * Math.PI * 2,
+      swayAmp:
+        layer === 2 ? 1.6 + Math.random() * 1.2 : 1.0 + Math.random() * 0.9,
+      alpha,
+      rot: (Math.random() - 0.5) * 0.9,
+      rotSp:
+        layer === 2
+          ? (Math.random() - 0.5) * 0.35
+          : (Math.random() - 0.5) * 0.25,
+      // sprinkle some non-pink hearts subtly
+      tint:
+        Math.random() < 0.14 ? "green" : Math.random() < 0.1 ? "gold" : "pink",
     });
   }
+}
+
+seedBgHearts();
+window.addEventListener("resize", seedBgHearts);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", seedBgHearts);
+}
+
+function drawBgHeart(x, y, size, alpha, rot, tint) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+
+  const s = size / 100;
+  ctx.scale(s, s);
+
+  ctx.beginPath();
+  ctx.moveTo(0, 30);
+  ctx.bezierCurveTo(0, 5, -30, 0, -30, -20);
+  ctx.bezierCurveTo(-30, -45, 0, -30, 0, -15);
+  ctx.bezierCurveTo(0, -30, 30, -45, 30, -20);
+  ctx.bezierCurveTo(30, 0, 0, 5, 0, 30);
+  ctx.closePath();
+
+  // Color tuning
+  let fill;
+  if (tint === "green") fill = `rgba(25,255,135,${alpha})`;
+  else if (tint === "gold") fill = `rgba(255,183,3,${alpha})`;
+  else fill = `rgba(255,45,85,${alpha})`;
+
+  // Soft glow
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = "rgba(255,45,85,0.22)";
+
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.restore();
 }
 
 seedBgHearts();
@@ -488,17 +561,29 @@ function render(now) {
 
   ctx.clearRect(0, 0, VW, VH);
 
-  // Background floating hearts
+  // Background floating hearts (layered)
   for (const h of bgHearts) {
-    h.y += h.speed;
-    h.x += Math.sin(now * 0.001 + h.sway) * 0.2;
+    // Downward drift (faster than before)
+    h.y += h.speed * (dt * 60);
 
-    if (h.y > VH + 40) {
-      h.y = -40;
+    // Side sway + gentle parallax feel
+    h.swayPhase += dt * (h.layer === 2 ? 1.35 : h.layer === 1 ? 1.1 : 0.9);
+    h.x += Math.sin(h.swayPhase) * h.swayAmp * (dt * 60) * 0.12;
+
+    // Small rotation drift
+    h.rot += h.rotSp * dt;
+
+    // Wrap
+    if (h.y > VH + h.size * 0.9) {
+      h.y = -h.size * 0.9;
       h.x = Math.random() * VW;
     }
 
-    drawBgHeart(h.x, h.y, h.size, h.alpha, h.rot);
+    // Slight alpha pulse so it feels alive
+    const pulse = 0.85 + Math.sin(now * 0.0012 + h.swayPhase) * 0.15;
+    const a = clamp(h.alpha * pulse, 0, 0.3);
+
+    drawBgHeart(h.x, h.y, h.size, a, h.rot, h.tint);
   }
 
   const L = computeSpriteLayout(now);
