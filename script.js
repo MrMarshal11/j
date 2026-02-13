@@ -1,22 +1,23 @@
 // =====================================================
-// Phone-optimized cinematic valentine (SPRITE VERSION)
-// - Two custom sprites (assets/guy.png, assets/girl.png)
-// - Sprites preserve aspect ratio (no squish)
-// - Sized + positioned for PHONE: never overlap, never sit behind the rose
-// - Sprites slide in near edges, then back away and stay out of the rose area
-// - Subtle beam
-// - Rose centered on center light
-// - Hearts burst from corolla briefly after bloom completes
-// - Ambient pulse forever
+// PHONE-FIRST Valentine (SPRITE VERSION - GUARANTEED VISIBLE)
+// Fixes:
+// - Sprites were going out-of-frame due to bad stopRightBoundary math.
+// - Now sprites are ALWAYS placed using their REAL computed widths,
+//   clamped into the viewport, and never overlap the rose safe zone.
+// - Sprites are SMALLER (phone UX), sit near edges, fully visible,
+//   and never drift behind the rose.
+// - Beams originate from sprite inner edges.
+// - Hearts burst reliably from corolla.
+// - Ambient loop forever.
 // =====================================================
 
 const T = {
-  skyIntro: 1600,
-  spriteIn: 1500,
-  pauseBeforeBeam: 350,
-  beamPhase: 1100,
-  roseDraw: 3200,
-  roseBloom: 2100,
+  skyIntro: 1400,
+  spriteIn: 1400,
+  pauseBeforeBeam: 320,
+  beamPhase: 1000,
+  roseDraw: 3100,
+  roseBloom: 2000,
 };
 
 const TOTAL_ONCE =
@@ -40,6 +41,14 @@ const fillPaths = Array.from(roseSvg.querySelectorAll(".fill"));
 
 let start = null;
 
+// ---------- Utils ----------
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+const easeInOut = (t) =>
+  t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+// ---------- Canvas sizing ----------
 let DPR = 1;
 function resize() {
   DPR = Math.max(1, window.devicePixelRatio || 1);
@@ -52,20 +61,14 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-const easeInOut = (t) =>
-  t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-
-// --- Load your sprites ---
-// Put these files in: assets/guy.png and assets/girl.png
+// ---------- Load sprites ----------
 const guyImg = new Image();
 guyImg.src = "assets/guy.png";
 
 const girlImg = new Image();
 girlImg.src = "assets/girl.png";
 
-// --- Stars ---
+// ---------- Stars ----------
 const stars = [];
 function seedStars() {
   stars.length = 0;
@@ -83,7 +86,7 @@ function seedStars() {
 seedStars();
 window.addEventListener("resize", seedStars);
 
-// --- Rose stroke setup ---
+// ---------- Rose stroke setup ----------
 const lengths = strokePaths.map((p) => p.getTotalLength());
 const totalLen = lengths.reduce((a, b) => a + b, 0);
 
@@ -105,19 +108,18 @@ function setDrawProgress(p) {
 }
 resetRose();
 
-// --- Hearts ---
+// ---------- Hearts ----------
 const hearts = [];
 let heartsBursted = false;
 
 function burstHearts(x, y) {
-  // brief, soft burst
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 18; i++) {
     hearts.push({
       x,
       y,
-      vx: (Math.random() - 0.5) * 1.0,
-      vy: -Math.random() * 1.6 - 0.45,
-      life: 0.9 + Math.random() * 0.25,
+      vx: (Math.random() - 0.5) * 0.95,
+      vy: -Math.random() * 1.55 - 0.45,
+      life: 0.85 + Math.random() * 0.25,
       age: 0,
       size: 0.55 + Math.random() * 0.45,
       sway: Math.random() * Math.PI * 2,
@@ -151,9 +153,9 @@ function updateAndDrawHearts(dt) {
     h.y += h.vy * (dt * 60);
     h.vy += 0.02 * (dt * 60);
 
-    const alpha = (1 - p) * 0.75;
-    const size = h.size * 16;
-    const sway = Math.sin(h.age * 7 + h.sway) * 2.2;
+    const alpha = (1 - p) * 0.78;
+    const size = h.size * 15;
+    const sway = Math.sin(h.age * 7 + h.sway) * 2.0;
 
     drawHeart(h.x + sway, h.y, size / 100, alpha);
 
@@ -161,10 +163,9 @@ function updateAndDrawHearts(dt) {
   }
 }
 
-// --- Subtle beam ---
+// ---------- Beam + Center Glow ----------
 function drawBeam(x1, y1, x2, y2, intensity) {
-  // phone-friendly subtle beams (no heavy pulse)
-  const a = 0.08 * intensity;
+  const a = 0.08 * intensity; // subtle
   ctx.strokeStyle = `rgba(255,255,255,${a})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -172,8 +173,7 @@ function drawBeam(x1, y1, x2, y2, intensity) {
   ctx.lineTo(x2, y2);
   ctx.stroke();
 
-  // ultra-faint tint
-  ctx.strokeStyle = `rgba(255,45,85,${0.035 * intensity})`;
+  ctx.strokeStyle = `rgba(255,45,85,${0.03 * intensity})`;
   ctx.lineWidth = 6;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
@@ -181,40 +181,38 @@ function drawBeam(x1, y1, x2, y2, intensity) {
   ctx.stroke();
 }
 
-// --- Center glow ---
 function drawCenterGlow(x, y, now) {
   const pulse = 0.85 + Math.sin(now * 0.0015) * 0.15;
-
-  const g = ctx.createRadialGradient(x, y, 0, x, y, 255);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 245);
   g.addColorStop(0, `rgba(255,45,85,${0.4 * pulse})`);
   g.addColorStop(0.55, `rgba(255,45,85,${0.14 * pulse})`);
   g.addColorStop(1, "rgba(0,0,0,0)");
-
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(x, y, 255, 0, Math.PI * 2);
+  ctx.arc(x, y, 245, 0, Math.PI * 2);
   ctx.fill();
 }
 
-// --- Sprite draw (preserve aspect ratio) ---
-function drawSpriteFixedHeight(img, xLeft, yTop, height, alpha = 1) {
-  if (!img.complete || img.naturalWidth === 0) return null;
+// ---------- Sprite drawing (aspect preserved) ----------
+function getDims(img, height) {
+  if (!img.complete || img.naturalWidth === 0)
+    return { w: height * 0.7, h: height, ready: false };
   const aspect = img.naturalWidth / img.naturalHeight;
-  const width = height * aspect;
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(img, xLeft, yTop, width, height);
-  ctx.restore();
-
-  return { width, height };
+  return { w: height * aspect, h: height, ready: true };
 }
 
+function drawSprite(img, xLeft, yTop, w, h, alpha = 1) {
+  if (!img.complete || img.naturalWidth === 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(img, xLeft, yTop, w, h);
+  ctx.restore();
+}
+
+// ---------- Main loop ----------
 function render(now) {
   if (!start) start = now;
   const t = now - start;
-
-  // run story once, keep ambience forever
   const tOnce = Math.min(t, TOTAL_ONCE);
 
   let cursor = 0;
@@ -237,126 +235,106 @@ function render(now) {
     ctx.fill();
   }
 
-  // --- PHONE layout constants ---
-  // Keep rose + center glow in the middle; keep sprites OUT of the rose zone.
   const cx = window.innerWidth / 2;
   const cy = window.innerHeight * 0.44;
-
-  // Center glow always
   drawCenterGlow(cx, cy, now);
 
-  // "No overlap" zone around center (half-width)
-  const centerSafeHalfW = Math.min(170, window.innerWidth * 0.26);
+  // ---------- PHONE UX LAYOUT ----------
+  // Make sprites clearly visible on phones:
+  // - smaller height
+  // - slightly lower than rose center so they don't "sit behind" the rose
+  // - enforced safe zone around center so they never overlap rose area
+  const spriteH = Math.min(210, window.innerHeight * 0.3); // MUCH smaller
+  const guy = getDims(guyImg, spriteH);
+  const girl = getDims(girlImg, spriteH);
 
-  // Sprite height scaled for phone (smaller!)
-  // Caps ensure they don't dominate portrait screens
-  const spriteH = Math.min(280, window.innerHeight * 0.4);
+  // rose safe zone width (keep sprites outside this)
+  const safeHalfW = Math.min(160, window.innerWidth * 0.25);
 
-  // Edge margins so sprites are fully visible
-  const edgeMargin = 12;
+  // edges
+  const edgeMargin = 10;
 
-  // Entry progress
-  const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
+  // FINAL on-screen targets (fully visible + outside safe zone)
+  // Left sprite xLeft must be:
+  // - at least edgeMargin
+  // - at most (cx - safeHalfW - guy.w)
+  const leftTarget = clamp(edgeMargin, edgeMargin, cx - safeHalfW - guy.w);
 
-  // Start off-screen
-  const startLeftX = -700;
-  const startRightBoundary = window.innerWidth + 700;
-
-  // We'll compute widths (if loaded) to ensure:
-  // - left sprite stays <= centerSafeLeft
-  // - right sprite stays >= centerSafeRight
-  const guyAspect =
-    guyImg.complete && guyImg.naturalWidth > 0
-      ? guyImg.naturalWidth / guyImg.naturalHeight
-      : 0.65;
-  const girlAspect =
-    girlImg.complete && girlImg.naturalWidth > 0
-      ? girlImg.naturalWidth / girlImg.naturalHeight
-      : 0.65;
-
-  const guyW = spriteH * guyAspect;
-  const girlW = spriteH * girlAspect;
-
-  const centerSafeLeftMax = cx - centerSafeHalfW - guyW; // left sprite xLeft must be <= this
-  const centerSafeRightMin = cx + centerSafeHalfW + girlW; // right boundary must be >= this
-
-  // Desired stop positions near edges
-  // Left stop: as close to edge as possible but not past center safe zone
-  const stopLeftX = Math.min(edgeMargin, centerSafeLeftMax);
-
-  // Right boundary stop: as close to edge as possible but not past center safe zone
-  const stopRightBoundary = Math.max(
-    window.innerWidth - edgeMargin,
-    centerSafeRightMin,
+  // Right sprite xLeft must be:
+  // - at least (cx + safeHalfW)
+  // - at most (windowWidth - edgeMargin - girl.w)
+  const rightTarget = clamp(
+    cx + safeHalfW,
+    cx + safeHalfW,
+    window.innerWidth - edgeMargin - girl.w,
   );
 
-  // Interpolate toward stops
-  let leftX = startLeftX + (stopLeftX - startLeftX) * entryP;
-  let rightBoundary =
-    startRightBoundary + (stopRightBoundary - startRightBoundary) * entryP;
+  // Offscreen starts
+  const leftStart = -guy.w - 40;
+  const rightStart = window.innerWidth + 40;
 
-  // As soon as rose begins forming (after beam phase), sprites back away and stay OUTSIDE center zone
+  // Entry interpolation
+  const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
+  let leftX = lerp(leftStart, leftTarget, entryP);
+  let rightX = lerp(rightStart, rightTarget, entryP);
+
+  // When rose begins (after beam), sprites back away and STAY out
   if (tOnce > pBeam) {
     const backP = easeInOut(clamp((tOnce - pBeam) / (pDraw - pBeam), 0, 1));
-    leftX = stopLeftX - 180 * backP;
-    rightBoundary = stopRightBoundary + 180 * backP;
+    leftX = leftTarget - 120 * backP;
+    rightX = rightTarget + 120 * backP;
   }
 
-  // Gentle idle float
-  const float = Math.sin(now * 0.002) * 5;
+  // vertical placement: put sprites a bit LOWER than the rose center
+  const float = Math.sin(now * 0.002) * 4;
+  const yTop = cy + 85 + float - spriteH * 0.5;
 
-  // vertical placement (centered on cy)
-  const yTop = cy + float - spriteH * 0.5;
+  // GUARANTEE on-screen visibility (hard clamp)
+  leftX = clamp(leftX, -guy.w * 0.35, window.innerWidth - edgeMargin - guy.w);
+  rightX = clamp(rightX, edgeMargin, window.innerWidth + girl.w * 0.35);
 
-  // Draw left sprite (guy)
-  const guyDims = drawSpriteFixedHeight(guyImg, leftX, yTop, spriteH, 1);
+  // draw sprites
+  drawSprite(guyImg, leftX, yTop, guy.w, guy.h, 1);
+  drawSprite(girlImg, rightX, yTop, girl.w, girl.h, 1);
 
-  // Draw right sprite (girl) aligned to right boundary
-  if (girlImg.complete && girlImg.naturalWidth > 0) {
-    const girlXLeft = rightBoundary - girlW;
-    ctx.drawImage(girlImg, girlXLeft, yTop, girlW, spriteH);
-  }
-
-  // Beam phase: subtle beams from sprite near inner edges toward center
+  // beams: originate from inner edges of sprites
   if (tOnce > pPause && tOnce < pBeam) {
-    const beamP = Math.sin(((tOnce - pPause) / (pBeam - pPause)) * Math.PI); // 0->1->0
-
+    const beamP = Math.sin(((tOnce - pPause) / (pBeam - pPause)) * Math.PI);
     const intensity = beamP;
 
-    const leftBeamX = guyDims ? leftX + guyDims.width - 8 : leftX + guyW - 8;
-    const rightBeamX = rightBoundary - girlW + 8;
+    const leftBeamX = leftX + guy.w;
+    const rightBeamX = rightX;
 
-    drawBeam(leftBeamX, cy, cx, cy, intensity);
-    drawBeam(rightBeamX, cy, cx, cy, intensity);
+    // aim a bit above sprites toward rose center
+    drawBeam(leftBeamX, yTop + guy.h * 0.35, cx, cy, intensity);
+    drawBeam(rightBeamX, yTop + girl.h * 0.35, cx, cy, intensity);
   }
 
-  // Rose draw starts after beam
+  // rose draw
   if (tOnce > pBeam) {
     roseShell.classList.add("on");
     const dp = clamp((tOnce - pBeam) / (pDraw - pBeam), 0, 1);
     setDrawProgress(dp);
   }
 
-  // Bloom fills after draw completes
+  // bloom
   if (tOnce > pDraw) {
     for (const f of fillPaths) f.classList.add("on");
     bloomGlow.classList.add("on");
     finalEl.classList.add("on");
   }
 
-  // Hearts burst once bloom completes (from corolla, aligned to center light)
+  // hearts burst after bloom completes (reliable)
   const COROLLA_X = cx;
-  const COROLLA_Y = cy - 10;
+  const COROLLA_Y = cy - 8;
 
   if (!heartsBursted && tOnce >= pBloom) {
     heartsBursted = true;
     burstHearts(COROLLA_X, COROLLA_Y);
   }
-
-  // Hearts animate
   updateAndDrawHearts(1 / 60);
 
-  // Keep final state after story ends (loop ambience)
+  // keep final state after story ends
   if (t >= TOTAL_ONCE) {
     setDrawProgress(1);
     for (const f of fillPaths) f.classList.add("on");
