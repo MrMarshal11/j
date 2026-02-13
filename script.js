@@ -1,6 +1,8 @@
 // =====================================================
-// PHONE-FIRST Valentine (SPRITES) - MOBILE SAFE + HEARTS AFTER FLOWER FINISHES + NAME LABELS
-// - Hearts burst from the corolla shortly AFTER the flower finishes being created (after roseDraw completes)
+// PHONE-FIRST Valentine (SPRITES) - MOBILE SAFE + CONTINUOUS SKY HEARTS AFTER FINISH
+// - Hearts: continuous slow stream of tiny cute hearts drifting down from the top
+//           starts AFTER the flower is finished (after roseDraw completes),
+//           fades out and vanishes before traveling too far.
 // - Names above sprites:
 //    Guy:  "Me (cool guy)"
 //    Girl: 'You ("은서")'
@@ -17,8 +19,9 @@ const T = {
   roseDraw: 3000,
   roseBloom: 1900,
 
-  // NEW: delay after rose drawing finishes before hearts burst
-  heartsDelayAfterRoseDone: 250,
+  // When the flower is "finished" for the heart stream start:
+  // We treat end of roseDraw as "created". (Bloom can happen after.)
+  heartStreamStartDelay: 250,
 };
 
 const TOTAL_ONCE =
@@ -144,61 +147,6 @@ function setDrawProgress(p) {
 }
 resetRose();
 
-// ---------- Hearts ----------
-const hearts = [];
-let heartsBursted = false;
-
-function burstHearts(x, y) {
-  for (let i = 0; i < 16; i++) {
-    hearts.push({
-      x,
-      y,
-      vx: (Math.random() - 0.5) * 0.9,
-      vy: -Math.random() * 1.45 - 0.45,
-      life: 0.85 + Math.random() * 0.22,
-      age: 0,
-      size: 0.55 + Math.random() * 0.45,
-      sway: Math.random() * Math.PI * 2,
-    });
-  }
-}
-
-function drawHeart(x, y, s, a) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(s, s);
-  ctx.beginPath();
-  ctx.moveTo(0, 0.3);
-  ctx.bezierCurveTo(0, 0.05, -0.3, 0, -0.3, -0.2);
-  ctx.bezierCurveTo(-0.3, -0.45, 0, -0.3, 0, -0.15);
-  ctx.bezierCurveTo(0, -0.3, 0.3, -0.45, 0.3, -0.2);
-  ctx.bezierCurveTo(0.3, 0, 0, 0.05, 0, 0.3);
-  ctx.closePath();
-  ctx.fillStyle = `rgba(255,120,170,${a})`;
-  ctx.fill();
-  ctx.restore();
-}
-
-function updateAndDrawHearts(dt) {
-  for (let i = hearts.length - 1; i >= 0; i--) {
-    const h = hearts[i];
-    h.age += dt;
-    const p = clamp(h.age / h.life, 0, 1);
-
-    h.x += h.vx * (dt * 60);
-    h.y += h.vy * (dt * 60);
-    h.vy += 0.02 * (dt * 60);
-
-    const alpha = (1 - p) * 0.78;
-    const size = h.size * 14;
-    const sway = Math.sin(h.age * 7 + h.sway) * 2.0;
-
-    drawHeart(h.x + sway, h.y, size / 100, alpha);
-
-    if (p >= 1) hearts.splice(i, 1);
-  }
-}
-
 // ---------- Beam + Center Glow ----------
 function drawBeam(x1, y1, x2, y2, intensity) {
   const a = 0.085 * intensity;
@@ -288,21 +236,17 @@ function drawNameLabel(text, centerX, topY) {
   const padX = 10;
   const padY = 6;
 
-  // Font scales gently with viewport width
   const fontPx = clamp(Math.round(VW * 0.04), 12, 16);
   ctx.font = `600 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
 
-  const metrics = ctx.measureText(text);
-  const textW = metrics.width;
+  const textW = ctx.measureText(text).width;
 
   const boxW = textW + padX * 2;
   const boxH = fontPx + padY * 2;
 
-  // Place above sprite, but keep on screen
   const x = clamp(centerX - boxW / 2, 8, VW - 8 - boxW);
   const y = clamp(topY - boxH - 6, 8, VH - 8 - boxH);
 
-  // Background pill
   ctx.save();
   ctx.globalAlpha = 0.9;
   ctx.fillStyle = "rgba(0,0,0,0.35)";
@@ -313,12 +257,111 @@ function drawNameLabel(text, centerX, topY) {
   ctx.fill();
   ctx.stroke();
 
-  // Text
   ctx.globalAlpha = 1;
   ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.textBaseline = "top";
   ctx.fillText(text, x + padX, y + padY);
   ctx.restore();
+}
+
+// ---------- Tiny sky hearts (continuous stream) ----------
+const skyHearts = [];
+let skyHeartAccumulator = 0;
+
+// Tiny heart shape (reused)
+function drawTinyHeart(x, y, sizePx, alpha, rot) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  const s = sizePx / 100;
+  ctx.scale(s, s);
+
+  ctx.beginPath();
+  ctx.moveTo(0, 30);
+  ctx.bezierCurveTo(0, 5, -30, 0, -30, -20);
+  ctx.bezierCurveTo(-30, -45, 0, -30, 0, -15);
+  ctx.bezierCurveTo(0, -30, 30, -45, 30, -20);
+  ctx.bezierCurveTo(30, 0, 0, 5, 0, 30);
+  ctx.closePath();
+
+  ctx.fillStyle = `rgba(255,120,170,${alpha})`;
+  ctx.fill();
+  ctx.restore();
+}
+
+function spawnSkyHeart() {
+  // Spawn from slightly above the top edge, spread across the width
+  const x = Math.random() * VW;
+
+  // Start high so they "appear from the sky"
+  const y = -10 - Math.random() * 30;
+
+  // Slow drift down, tiny size, gentle sway
+  const baseFall = 0.18 + Math.random() * 0.22; // px per frame-ish (scaled by dt*60 below)
+  const vx = (Math.random() - 0.5) * 0.12;
+  const swayPhase = Math.random() * Math.PI * 2;
+
+  // Keep them from traveling too far: short lifespan + extra fade
+  const life = 1.7 + Math.random() * 0.9; // seconds
+
+  skyHearts.push({
+    x,
+    y,
+    vx,
+    vy: baseFall,
+    age: 0,
+    life,
+    size: 6 + Math.random() * 6, // tiny hearts
+    swayPhase,
+    rot: (Math.random() - 0.5) * 0.6,
+    rotSp: (Math.random() - 0.5) * 0.25,
+    // Fade out early and vanish before reaching far down
+    maxTravel: Math.min(160, VH * 0.22) + Math.random() * 30,
+  });
+
+  // Cap to avoid buildup on slow devices
+  if (skyHearts.length > 140) skyHearts.splice(0, skyHearts.length - 140);
+}
+
+function updateAndDrawSkyHearts(dt, enabled) {
+  if (enabled) {
+    // Spawn rate: small, steady stream
+    // dt in seconds; rate hearts/sec
+    const rate = 10; // hearts per second (tiny)
+    skyHeartAccumulator += dt * rate;
+    while (skyHeartAccumulator >= 1) {
+      skyHeartAccumulator -= 1;
+      spawnSkyHeart();
+    }
+  }
+
+  // Update/draw
+  for (let i = skyHearts.length - 1; i >= 0; i--) {
+    const h = skyHearts[i];
+    h.age += dt;
+    const p = clamp(h.age / h.life, 0, 1);
+
+    // Sway + drift
+    const sway = Math.sin(h.age * 3.2 + h.swayPhase) * 0.9;
+
+    h.x += (h.vx + sway * 0.02) * (dt * 60);
+    h.y += h.vy * (dt * 60);
+    h.rot += h.rotSp * dt;
+
+    // Fade: gentle, and also fade out as they travel downward
+    const traveled = h.y + 40; // approx since start is negative
+    const travelP = clamp(traveled / h.maxTravel, 0, 1);
+
+    // Not too bright; fade quicker near end of travel
+    const alpha = (1 - p) * 0.55 * (1 - travelP * 0.85);
+
+    drawTinyHeart(h.x, h.y, h.size, alpha, h.rot);
+
+    // Remove when done or when they went "not too far"
+    if (p >= 1 || travelP >= 1 || h.y > VH + 40) {
+      skyHearts.splice(i, 1);
+    }
+  }
 }
 
 // ---------- Layout (phone-first, never overlap, auto-fit) ----------
@@ -374,13 +417,12 @@ function computeSpriteLayout(now) {
 
   let yTopTarget = spriteCenterY - spriteH * 0.5;
   const maxYTop = cy - spriteH - 12;
-  yTopTarget = clamp(yTopTarget, edge + 18, Math.max(edge + 18, maxYTop)); // +18 gives room for labels
+  yTopTarget = clamp(yTopTarget, edge + 18, Math.max(edge + 18, maxYTop));
 
   return {
     cx,
     cy,
     spriteH,
-    gap,
     guyD,
     girlD,
     guyFinalX,
@@ -391,8 +433,15 @@ function computeSpriteLayout(now) {
 
 // ---------- Main loop ----------
 let start = null;
+let lastNow = null;
+
 function render(now) {
   if (!start) start = now;
+  if (lastNow == null) lastNow = now;
+
+  const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000)); // seconds
+  lastNow = now;
+
   const t = now - start;
   const tOnce = Math.min(t, TOTAL_ONCE);
 
@@ -446,11 +495,9 @@ function render(now) {
     FLIP_GIRL,
   );
 
-  // Name labels above sprites
-  const guyCenterX = guyX + guyD.w / 2;
-  const girlCenterX = girlX + girlD.w / 2;
-  drawNameLabel(GUY_LABEL, guyCenterX, yTop);
-  drawNameLabel(GIRL_LABEL, girlCenterX, yTop);
+  // Name labels
+  drawNameLabel(GUY_LABEL, guyX + guyD.w / 2, yTop);
+  drawNameLabel(GIRL_LABEL, girlX + girlD.w / 2, yTop);
 
   // GUY ONLY BEAM
   if (tOnce > pPause && tOnce < pBeam) {
@@ -474,27 +521,22 @@ function render(now) {
     setDrawProgress(dp);
   }
 
-  // NEW: Hearts shortly after the rose is fully drawn (the "created" moment)
-  const roseDoneAt = pDraw; // end of roseDraw section
-  const heartsAt = roseDoneAt + T.heartsDelayAfterRoseDone;
-
-  // Corolla point (tweak Y a touch if you want)
-  const COROLLA_X = cx;
-  const COROLLA_Y = cy - 8;
-
-  if (!heartsBursted && tOnce >= heartsAt) {
-    heartsBursted = true;
-    burstHearts(COROLLA_X, COROLLA_Y);
-  }
-
-  // Bloom
+  // Bloom (as before)
   if (tOnce > pDraw) {
     for (const f of fillPaths) f.classList.add("on");
     bloomGlow.classList.add("on");
     finalEl.classList.add("on");
   }
 
-  updateAndDrawHearts(1 / 60);
+  // -----------------------------------------------------
+  // NEW: Continuous sky heart stream after flower is created
+  // "Created" moment = end of roseDraw (pDraw), plus small delay.
+  // -----------------------------------------------------
+  const flowerCreatedAt = pDraw + T.heartStreamStartDelay;
+  const heartStreamEnabled = tOnce >= flowerCreatedAt;
+
+  // Draw sky hearts AFTER everything else so they appear in front a bit
+  updateAndDrawSkyHearts(dt, heartStreamEnabled);
 
   // Keep final state
   if (t >= TOTAL_ONCE) {
@@ -507,7 +549,7 @@ function render(now) {
   requestAnimationFrame(render);
 }
 
-// Late-loading image safety (loop will re-measure next frame)
+// Late-loading image safety
 [guyImg, girlImg].forEach((img) => {
   img.addEventListener("load", () => {});
   img.addEventListener("error", () => {});
