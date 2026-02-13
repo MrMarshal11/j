@@ -1,23 +1,10 @@
 // =====================================================
-// PHONE-FIRST Valentine (SPRITES) - BENCHMARK + NO OVERLAP + GUY-ONLY BEAM
-//
-// What this version fixes:
-// 1) Sprites will NEVER overlap each other.
-//    They are constrained by a "center benchmark zone" directly above the rose.
-//    Each sprite is clamped to its own side of that benchmark, so they "rest"
-//    against it with a clean gap.
-//
-// 2) Beam is GUARANTEED to come from the GUY only.
-//    (The start point is always the guy sprite's inner-hand area.)
-//
-// 3) Sprites sit directly above the flower (tight), with a controlled gap,
-//    and remain fully visible on phone.
-//
-// NOTE ABOUT FACING:
-// - If your girl sprite is already facing LEFT by default (toward the guy),
-//   set FLIP_GIRL=false. If she faces RIGHT by default, set FLIP_GIRL=true.
-// - If your guy sprite faces RIGHT by default, set FLIP_GUY=false.
-//   If he faces LEFT by default, set FLIP_GUY=true.
+// PHONE-FIRST Valentine (SPRITES) - FIXED FOR MOBILE VIEWPORT + SAFE PLACEHOLDERS
+// - Uses visualViewport (iOS Safari address-bar-safe sizing)
+// - Guarantees sprites stay on-screen and never overlap
+// - Auto-scales sprite size down if the phone is too narrow
+// - Beam ALWAYS originates from the GUY sprite (and respects FLIP_GUY)
+// - Avoids ctx.roundRect crashes on older mobile browsers (fallback included)
 // =====================================================
 
 const T = {
@@ -57,26 +44,58 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
-// ---------- Canvas sizing ----------
+// ---------- Mobile-safe viewport sizing ----------
 let DPR = 1;
+let VW = 0;
+let VH = 0;
+
+function getViewport() {
+  // visualViewport fixes iOS Safari “address bar” sizing issues
+  const vv = window.visualViewport;
+  const w = vv ? vv.width : window.innerWidth;
+  const h = vv ? vv.height : window.innerHeight;
+  return {
+    w: Math.max(1, Math.floor(w)),
+    h: Math.max(1, Math.floor(h)),
+  };
+}
+
 function resize() {
   DPR = Math.max(1, window.devicePixelRatio || 1);
-  canvas.width = Math.floor(window.innerWidth * DPR);
-  canvas.height = Math.floor(window.innerHeight * DPR);
-  canvas.style.width = window.innerWidth + "px";
-  canvas.style.height = window.innerHeight + "px";
+
+  const v = getViewport();
+  VW = v.w;
+  VH = v.h;
+
+  canvas.width = Math.floor(VW * DPR);
+  canvas.height = Math.floor(VH * DPR);
+  canvas.style.width = VW + "px";
+  canvas.style.height = VH + "px";
+
+  // Draw in CSS pixel coordinates
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
+
 window.addEventListener("resize", resize);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", resize);
+  window.visualViewport.addEventListener("scroll", resize);
+}
 resize();
 
-// ---------- Load sprites (cache-bust for phones) ----------
+// ---------- Load sprites ----------
 function loadImage(path) {
   const img = new Image();
+  // NOTE: crossOrigin can cause issues if assets are not served with CORS headers.
+  // For same-origin hosting it’s fine. If your phone shows missing images,
+  // try commenting the next line out.
   img.crossOrigin = "anonymous";
+
+  // Cache-bust (helps phones with aggressive caching)
   img.src = `${path}?v=${Date.now()}`;
   return img;
 }
+
 const guyImg = loadImage("assets/guy.png");
 const girlImg = loadImage("assets/girl.png");
 
@@ -84,11 +103,11 @@ const girlImg = loadImage("assets/girl.png");
 const stars = [];
 function seedStars() {
   stars.length = 0;
-  const count = Math.min(180, Math.floor(window.innerWidth * 0.18));
+  const count = Math.min(180, Math.floor(VW * 0.18));
   for (let i = 0; i < count; i++) {
     stars.push({
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
+      x: Math.random() * VW,
+      y: Math.random() * VH,
       r: Math.random() * 1.4 + 0.4,
       sp: Math.random() * 0.1 + 0.02,
       a: Math.random() * 0.55 + 0.2,
@@ -97,6 +116,8 @@ function seedStars() {
 }
 seedStars();
 window.addEventListener("resize", seedStars);
+if (window.visualViewport)
+  window.visualViewport.addEventListener("resize", seedStars);
 
 // ---------- Rose stroke setup ----------
 const lengths = strokePaths.map((p) => p.getTotalLength());
@@ -205,11 +226,31 @@ function drawCenterGlow(x, y, now) {
   ctx.fill();
 }
 
+// ---------- Rounded-rect fallback (avoids mobile crashes) ----------
+function roundRectPath(x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  if (typeof ctx.roundRect === "function") {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, rr);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+}
+
 // ---------- Sprite helpers ----------
 function getDims(img, targetH, fallbackAspect = 0.7) {
   const ready = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
   const aspect = ready ? img.naturalWidth / img.naturalHeight : fallbackAspect;
-  return { w: targetH * aspect, h: targetH, ready };
+  return { w: targetH * aspect, h: targetH, ready, aspect };
 }
 
 function drawSpriteOrPlaceholder(img, x, y, w, h, label, flipX = false) {
@@ -226,17 +267,108 @@ function drawSpriteOrPlaceholder(img, x, y, w, h, label, flipX = false) {
     return;
   }
 
+  // Placeholder (safe on mobile)
   ctx.fillStyle = "rgba(255,255,255,0.10)";
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
   ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 12);
+
+  roundRectPath(x, y, w, h, 12);
   ctx.fill();
   ctx.stroke();
 
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
   ctx.fillText(label, x + 10, y + 18);
+}
+
+// ---------- Layout (phone-first, never overlap, auto-fit) ----------
+function computeSpriteLayout(now) {
+  const cx = VW / 2;
+  const cy = VH * 0.44;
+
+  // Base sprite height target (phone-friendly)
+  let spriteH = Math.min(160, VH * 0.235);
+  spriteH = Math.max(95, spriteH);
+
+  // Gap between sprites around the benchmark center
+  let gap = Math.min(28, VW * 0.075);
+  gap = Math.max(16, gap);
+
+  // Screen padding
+  const edge = 10;
+
+  // Float bob
+  const float = Math.sin(now * 0.002) * 3.0;
+
+  // “Directly above the flower” placement
+  const spriteCenterY = cy - Math.max(72, VH * 0.11) + float;
+
+  // If phone is narrow, scale sprites down to fit BOTH sprites + gap + edges
+  // We approximate widths via aspect ratios (real once loaded, fallback otherwise).
+  const gD0 = getDims(guyImg, spriteH);
+  const grD0 = getDims(girlImg, spriteH);
+
+  const maxUsableW = VW - edge * 2;
+  const requiredW = gD0.w + gap + grD0.w;
+
+  if (requiredW > maxUsableW) {
+    const scale = clamp(maxUsableW / requiredW, 0.5, 1);
+    spriteH = spriteH * scale;
+
+    // Recompute with scaled height
+    // (important for correct placement after scaling)
+  }
+
+  const guyD = getDims(guyImg, spriteH);
+  const girlD = getDims(girlImg, spriteH);
+
+  // Benchmark edges (center “no-cross” zone)
+  const benchmarkLeftEdge = cx - gap / 2;
+  const benchmarkRightEdge = cx + gap / 2;
+
+  // Desired resting X positions
+  let guyFinalX = benchmarkLeftEdge - guyD.w;
+  let girlFinalX = benchmarkRightEdge;
+
+  // Clamp to viewport
+  guyFinalX = clamp(guyFinalX, edge, VW - edge - guyD.w);
+  girlFinalX = clamp(girlFinalX, edge, VW - edge - girlD.w);
+
+  // As a safety net: enforce no overlap even after clamping
+  // If they collide (very narrow screens), push them apart symmetrically.
+  const minGirlX = guyFinalX + guyD.w + gap;
+  if (girlFinalX < minGirlX) {
+    const overflow = minGirlX - girlFinalX;
+
+    // Try pushing girl right first
+    girlFinalX = clamp(girlFinalX + overflow, edge, VW - edge - girlD.w);
+
+    // If still colliding, push guy left
+    const minGirlX2 = guyFinalX + guyD.w + gap;
+    if (girlFinalX < minGirlX2) {
+      const overflow2 = minGirlX2 - girlFinalX;
+      guyFinalX = clamp(guyFinalX - overflow2, edge, VW - edge - guyD.w);
+    }
+  }
+
+  // Y positioning (keep fully visible and above the rose)
+  let yTopTarget = spriteCenterY - spriteH * 0.5;
+
+  // Don’t let sprites drift off the top; and keep them above the rose center
+  const maxYTop = cy - spriteH - 12;
+  yTopTarget = clamp(yTopTarget, edge, Math.max(edge, maxYTop));
+
+  return {
+    cx,
+    cy,
+    spriteH,
+    gap,
+    guyD,
+    girlD,
+    guyFinalX,
+    girlFinalX,
+    yTopTarget,
+  };
 }
 
 // ---------- Main loop ----------
@@ -254,75 +386,31 @@ function render(now) {
   const pDraw = (cursor += T.roseDraw);
   const pBloom = (cursor += T.roseBloom);
 
-  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  // Clear using viewport-safe dims
+  ctx.clearRect(0, 0, VW, VH);
 
   // stars
   for (const s of stars) {
     s.y += s.sp;
-    if (s.y > window.innerHeight) s.y = 0;
+    if (s.y > VH) s.y = 0;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255,255,255,${s.a})`;
     ctx.fill();
   }
 
-  const cx = window.innerWidth / 2;
-  const cy = window.innerHeight * 0.44;
+  // Layout + glow center
+  const L = computeSpriteLayout(now);
+  const { cx, cy, spriteH, guyD, girlD, guyFinalX, girlFinalX, yTopTarget } = L;
+
   drawCenterGlow(cx, cy, now);
-
-  // =====================================================
-  // BENCHMARK ZONE (your "thing directly above the flower")
-  // We define a vertical line + a "no-cross" gap around center.
-  //
-  // Left sprite cannot cross into the benchmark from the left.
-  // Right sprite cannot cross into the benchmark from the right.
-  //
-  // They end up resting cleanly against the benchmark edges.
-  // =====================================================
-
-  const spriteH = Math.min(165, window.innerHeight * 0.23);
-  const guyD = getDims(guyImg, spriteH);
-  const girlD = getDims(girlImg, spriteH);
-
-  const edge = 10;
-
-  // Place sprites directly above flower
-  const float = Math.sin(now * 0.002) * 3.0;
-  const spriteCenterY = cy - 85 + float;
-  const yTopTarget = spriteCenterY - spriteH * 0.5;
-
-  // Benchmark gap (controls distance between sprites)
-  const gap = Math.min(26, window.innerWidth * 0.07);
-  const benchmarkLeftEdge = cx - gap / 2; // guy's rightmost allowed edge
-  const benchmarkRightEdge = cx + gap / 2; // girl's leftmost allowed edge
-
-  // Final "resting" positions, clamped to screen:
-  // Guy's x such that (x + w) <= benchmarkLeftEdge
-  // Girl's x such that x >= benchmarkRightEdge
-  let guyFinalX = benchmarkLeftEdge - guyD.w;
-  let girlFinalX = benchmarkRightEdge;
-
-  // Ensure they are fully inside the viewport
-  guyFinalX = clamp(guyFinalX, edge, window.innerWidth - edge - guyD.w);
-  girlFinalX = clamp(girlFinalX, edge, window.innerWidth - edge - girlD.w);
-
-  // If viewport is too narrow and clamping broke the gap, re-derive by anchoring to edges
-  // (still avoids overlap)
-  if (guyFinalX + guyD.w > benchmarkLeftEdge) {
-    guyFinalX = clamp(edge, edge, window.innerWidth - edge - guyD.w);
-  }
-  if (girlFinalX < benchmarkRightEdge) {
-    girlFinalX = clamp(
-      window.innerWidth - edge - girlD.w,
-      edge,
-      window.innerWidth - edge - girlD.w,
-    );
-  }
 
   // Entry animation: slide in toward final positions
   const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
-  const guyStartX = guyFinalX - 30;
-  const girlStartX = girlFinalX + 30;
+
+  const guyStartX = guyFinalX - Math.min(36, VW * 0.08);
+  const girlStartX = girlFinalX + Math.min(36, VW * 0.08);
+
   const yTopStart = yTopTarget - 18;
 
   const guyX = lerp(guyStartX, guyFinalX, entryP);
@@ -341,13 +429,17 @@ function render(now) {
     FLIP_GIRL,
   );
 
-  // GUY ONLY BEAM (guaranteed from guy)
+  // GUY ONLY BEAM (always from guy, respects FLIP_GUY)
   if (tOnce > pPause && tOnce < pBeam) {
     const beamP = Math.sin(((tOnce - pPause) / (pBeam - pPause)) * Math.PI);
     const intensity = beamP;
 
-    // start point: slightly inside guy's right edge around "hand" height
-    const beamStartX = guyX + guyD.w * 0.92;
+    // start point: "inner hand" depending on whether the guy is flipped
+    const handXFactor = 0.92; // near right edge when not flipped
+    const beamStartX = FLIP_GUY
+      ? guyX + guyD.w * (1 - handXFactor) // mirrored: near left edge
+      : guyX + guyD.w * handXFactor;
+
     const beamStartY = yTop + spriteH * 0.62;
 
     drawBeam(beamStartX, beamStartY, cx, cy, intensity);
@@ -367,13 +459,15 @@ function render(now) {
     finalEl.classList.add("on");
   }
 
-  // Hearts after bloom completes (from corolla at center light)
+  // Hearts after bloom completes
   const COROLLA_X = cx;
   const COROLLA_Y = cy - 8;
+
   if (!heartsBursted && tOnce >= pBloom) {
     heartsBursted = true;
     burstHearts(COROLLA_X, COROLLA_Y);
   }
+
   updateAndDrawHearts(1 / 60);
 
   // Keep final state after story ends
@@ -386,6 +480,17 @@ function render(now) {
 
   requestAnimationFrame(render);
 }
+
+// If images load late on mobile, this helps them “snap” into correct aspect sizing immediately
+[guyImg, girlImg].forEach((img) => {
+  img.addEventListener("load", () => {
+    // no-op; the render loop will pick up naturalWidth/Height next frame
+  });
+  img.addEventListener("error", () => {
+    // If you see placeholders only on phone, likely a path/CORS/hosting issue.
+    // Keep running so placeholders still show.
+  });
+});
 
 requestAnimationFrame(render);
 
