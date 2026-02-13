@@ -526,6 +526,12 @@ function render(now) {
     for (const f of fillPaths) f.classList.add("on");
     bloomGlow.classList.add("on");
     finalEl.classList.add("on");
+
+    // NEW: fire a one-time event when the rose has finished constructing
+    if (!window.__roseFinishedFired) {
+      window.__roseFinishedFired = true;
+      window.dispatchEvent(new CustomEvent("rose:finished"));
+    }
   }
 
   // -----------------------------------------------------

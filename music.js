@@ -117,4 +117,15 @@ const SONG_SRC = "./assets/song.mp3";
       setCancelEnabled(false);
     }
   });
+  // NEW: auto-start music the first time the rose finishes constructing
+  let autoStarted = false;
+
+  window.addEventListener("rose:finished", () => {
+    if (autoStarted) return;
+    autoStarted = true;
+
+    // Start from the beginning for the first time
+    // (If autoplay is blocked, user can tap "click me!" once.)
+    playFrom(0);
+  });
 })();
