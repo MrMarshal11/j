@@ -1,10 +1,12 @@
 // =====================================================
-// PHONE-FIRST Valentine (SPRITES) - FIXED FOR MOBILE VIEWPORT + SAFE PLACEHOLDERS
-// - Uses visualViewport (iOS Safari address-bar-safe sizing)
-// - Guarantees sprites stay on-screen and never overlap
-// - Auto-scales sprite size down if the phone is too narrow
-// - Beam ALWAYS originates from the GUY sprite (and respects FLIP_GUY)
-// - Avoids ctx.roundRect crashes on older mobile browsers (fallback included)
+// PHONE-FIRST Valentine (SPRITES) - MOBILE SAFE + HEARTS AFTER FLOWER FINISHES + NAME LABELS
+// - Hearts burst from the corolla shortly AFTER the flower finishes being created (after roseDraw completes)
+// - Names above sprites:
+//    Guy:  "Me (cool guy)"
+//    Girl: 'You ("은서")'
+// - Uses visualViewport for iOS Safari sizing
+// - Never overlaps sprites; auto-scales down on narrow phones
+// - Beam ALWAYS from GUY sprite (respects FLIP_GUY)
 // =====================================================
 
 const T = {
@@ -14,6 +16,9 @@ const T = {
   beamPhase: 1000,
   roseDraw: 3000,
   roseBloom: 1900,
+
+  // NEW: delay after rose drawing finishes before hearts burst
+  heartsDelayAfterRoseDone: 250,
 };
 
 const TOTAL_ONCE =
@@ -39,6 +44,10 @@ const fillPaths = Array.from(roseSvg.querySelectorAll(".fill"));
 const FLIP_GIRL = false; // set true if your girl sprite faces RIGHT by default
 const FLIP_GUY = false; // set true if your guy sprite faces LEFT by default
 
+// ---------- Name labels ----------
+const GUY_LABEL = "Me (cool guy)";
+const GIRL_LABEL = 'You ("은서")';
+
 // ---------- Utils ----------
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -50,7 +59,6 @@ let VW = 0;
 let VH = 0;
 
 function getViewport() {
-  // visualViewport fixes iOS Safari “address bar” sizing issues
   const vv = window.visualViewport;
   const w = vv ? vv.width : window.innerWidth;
   const h = vv ? vv.height : window.innerHeight;
@@ -72,7 +80,6 @@ function resize() {
   canvas.style.width = VW + "px";
   canvas.style.height = VH + "px";
 
-  // Draw in CSS pixel coordinates
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 
@@ -86,12 +93,8 @@ resize();
 // ---------- Load sprites ----------
 function loadImage(path) {
   const img = new Image();
-  // NOTE: crossOrigin can cause issues if assets are not served with CORS headers.
-  // For same-origin hosting it’s fine. If your phone shows missing images,
-  // try commenting the next line out.
+  // If your sprites fail ONLY on phone, try commenting this out (CORS headers).
   img.crossOrigin = "anonymous";
-
-  // Cache-bust (helps phones with aggressive caching)
   img.src = `${path}?v=${Date.now()}`;
   return img;
 }
@@ -226,7 +229,7 @@ function drawCenterGlow(x, y, now) {
   ctx.fill();
 }
 
-// ---------- Rounded-rect fallback (avoids mobile crashes) ----------
+// ---------- Rounded-rect fallback ----------
 function roundRectPath(x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
   if (typeof ctx.roundRect === "function") {
@@ -267,7 +270,6 @@ function drawSpriteOrPlaceholder(img, x, y, w, h, label, flipX = false) {
     return;
   }
 
-  // Placeholder (safe on mobile)
   ctx.fillStyle = "rgba(255,255,255,0.10)";
   ctx.strokeStyle = "rgba(255,255,255,0.35)";
   ctx.lineWidth = 2;
@@ -281,30 +283,60 @@ function drawSpriteOrPlaceholder(img, x, y, w, h, label, flipX = false) {
   ctx.fillText(label, x + 10, y + 18);
 }
 
+// ---------- Name label rendering ----------
+function drawNameLabel(text, centerX, topY) {
+  const padX = 10;
+  const padY = 6;
+
+  // Font scales gently with viewport width
+  const fontPx = clamp(Math.round(VW * 0.04), 12, 16);
+  ctx.font = `600 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+
+  const metrics = ctx.measureText(text);
+  const textW = metrics.width;
+
+  const boxW = textW + padX * 2;
+  const boxH = fontPx + padY * 2;
+
+  // Place above sprite, but keep on screen
+  const x = clamp(centerX - boxW / 2, 8, VW - 8 - boxW);
+  const y = clamp(topY - boxH - 6, 8, VH - 8 - boxH);
+
+  // Background pill
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 1;
+
+  roundRectPath(x, y, boxW, boxH, 999);
+  ctx.fill();
+  ctx.stroke();
+
+  // Text
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.textBaseline = "top";
+  ctx.fillText(text, x + padX, y + padY);
+  ctx.restore();
+}
+
 // ---------- Layout (phone-first, never overlap, auto-fit) ----------
 function computeSpriteLayout(now) {
   const cx = VW / 2;
   const cy = VH * 0.44;
 
-  // Base sprite height target (phone-friendly)
   let spriteH = Math.min(160, VH * 0.235);
   spriteH = Math.max(95, spriteH);
 
-  // Gap between sprites around the benchmark center
   let gap = Math.min(28, VW * 0.075);
   gap = Math.max(16, gap);
 
-  // Screen padding
   const edge = 10;
 
-  // Float bob
   const float = Math.sin(now * 0.002) * 3.0;
-
-  // “Directly above the flower” placement
   const spriteCenterY = cy - Math.max(72, VH * 0.11) + float;
 
-  // If phone is narrow, scale sprites down to fit BOTH sprites + gap + edges
-  // We approximate widths via aspect ratios (real once loaded, fallback otherwise).
   const gD0 = getDims(guyImg, spriteH);
   const grD0 = getDims(girlImg, spriteH);
 
@@ -314,36 +346,25 @@ function computeSpriteLayout(now) {
   if (requiredW > maxUsableW) {
     const scale = clamp(maxUsableW / requiredW, 0.5, 1);
     spriteH = spriteH * scale;
-
-    // Recompute with scaled height
-    // (important for correct placement after scaling)
   }
 
   const guyD = getDims(guyImg, spriteH);
   const girlD = getDims(girlImg, spriteH);
 
-  // Benchmark edges (center “no-cross” zone)
   const benchmarkLeftEdge = cx - gap / 2;
   const benchmarkRightEdge = cx + gap / 2;
 
-  // Desired resting X positions
   let guyFinalX = benchmarkLeftEdge - guyD.w;
   let girlFinalX = benchmarkRightEdge;
 
-  // Clamp to viewport
   guyFinalX = clamp(guyFinalX, edge, VW - edge - guyD.w);
   girlFinalX = clamp(girlFinalX, edge, VW - edge - girlD.w);
 
-  // As a safety net: enforce no overlap even after clamping
-  // If they collide (very narrow screens), push them apart symmetrically.
   const minGirlX = guyFinalX + guyD.w + gap;
   if (girlFinalX < minGirlX) {
     const overflow = minGirlX - girlFinalX;
-
-    // Try pushing girl right first
     girlFinalX = clamp(girlFinalX + overflow, edge, VW - edge - girlD.w);
 
-    // If still colliding, push guy left
     const minGirlX2 = guyFinalX + guyD.w + gap;
     if (girlFinalX < minGirlX2) {
       const overflow2 = minGirlX2 - girlFinalX;
@@ -351,12 +372,9 @@ function computeSpriteLayout(now) {
     }
   }
 
-  // Y positioning (keep fully visible and above the rose)
   let yTopTarget = spriteCenterY - spriteH * 0.5;
-
-  // Don’t let sprites drift off the top; and keep them above the rose center
   const maxYTop = cy - spriteH - 12;
-  yTopTarget = clamp(yTopTarget, edge, Math.max(edge, maxYTop));
+  yTopTarget = clamp(yTopTarget, edge + 18, Math.max(edge + 18, maxYTop)); // +18 gives room for labels
 
   return {
     cx,
@@ -386,7 +404,6 @@ function render(now) {
   const pDraw = (cursor += T.roseDraw);
   const pBloom = (cursor += T.roseBloom);
 
-  // Clear using viewport-safe dims
   ctx.clearRect(0, 0, VW, VH);
 
   // stars
@@ -399,17 +416,17 @@ function render(now) {
     ctx.fill();
   }
 
-  // Layout + glow center
   const L = computeSpriteLayout(now);
   const { cx, cy, spriteH, guyD, girlD, guyFinalX, girlFinalX, yTopTarget } = L;
 
   drawCenterGlow(cx, cy, now);
 
-  // Entry animation: slide in toward final positions
+  // Entry animation
   const entryP = easeOut(clamp((tOnce - pIntro) / (pIn - pIntro), 0, 1));
 
-  const guyStartX = guyFinalX - Math.min(36, VW * 0.08);
-  const girlStartX = girlFinalX + Math.min(36, VW * 0.08);
+  const slide = Math.min(36, VW * 0.08);
+  const guyStartX = guyFinalX - slide;
+  const girlStartX = girlFinalX + slide;
 
   const yTopStart = yTopTarget - 18;
 
@@ -417,7 +434,7 @@ function render(now) {
   const girlX = lerp(girlStartX, girlFinalX, entryP);
   const yTop = lerp(yTopStart, yTopTarget, entryP);
 
-  // Draw sprites facing each other
+  // Draw sprites
   drawSpriteOrPlaceholder(guyImg, guyX, yTop, guyD.w, guyD.h, "GUY", FLIP_GUY);
   drawSpriteOrPlaceholder(
     girlImg,
@@ -429,15 +446,20 @@ function render(now) {
     FLIP_GIRL,
   );
 
-  // GUY ONLY BEAM (always from guy, respects FLIP_GUY)
+  // Name labels above sprites
+  const guyCenterX = guyX + guyD.w / 2;
+  const girlCenterX = girlX + girlD.w / 2;
+  drawNameLabel(GUY_LABEL, guyCenterX, yTop);
+  drawNameLabel(GIRL_LABEL, girlCenterX, yTop);
+
+  // GUY ONLY BEAM
   if (tOnce > pPause && tOnce < pBeam) {
     const beamP = Math.sin(((tOnce - pPause) / (pBeam - pPause)) * Math.PI);
     const intensity = beamP;
 
-    // start point: "inner hand" depending on whether the guy is flipped
-    const handXFactor = 0.92; // near right edge when not flipped
+    const handXFactor = 0.92;
     const beamStartX = FLIP_GUY
-      ? guyX + guyD.w * (1 - handXFactor) // mirrored: near left edge
+      ? guyX + guyD.w * (1 - handXFactor)
       : guyX + guyD.w * handXFactor;
 
     const beamStartY = yTop + spriteH * 0.62;
@@ -452,6 +474,19 @@ function render(now) {
     setDrawProgress(dp);
   }
 
+  // NEW: Hearts shortly after the rose is fully drawn (the "created" moment)
+  const roseDoneAt = pDraw; // end of roseDraw section
+  const heartsAt = roseDoneAt + T.heartsDelayAfterRoseDone;
+
+  // Corolla point (tweak Y a touch if you want)
+  const COROLLA_X = cx;
+  const COROLLA_Y = cy - 8;
+
+  if (!heartsBursted && tOnce >= heartsAt) {
+    heartsBursted = true;
+    burstHearts(COROLLA_X, COROLLA_Y);
+  }
+
   // Bloom
   if (tOnce > pDraw) {
     for (const f of fillPaths) f.classList.add("on");
@@ -459,18 +494,9 @@ function render(now) {
     finalEl.classList.add("on");
   }
 
-  // Hearts after bloom completes
-  const COROLLA_X = cx;
-  const COROLLA_Y = cy - 8;
-
-  if (!heartsBursted && tOnce >= pBloom) {
-    heartsBursted = true;
-    burstHearts(COROLLA_X, COROLLA_Y);
-  }
-
   updateAndDrawHearts(1 / 60);
 
-  // Keep final state after story ends
+  // Keep final state
   if (t >= TOTAL_ONCE) {
     setDrawProgress(1);
     for (const f of fillPaths) f.classList.add("on");
@@ -481,15 +507,10 @@ function render(now) {
   requestAnimationFrame(render);
 }
 
-// If images load late on mobile, this helps them “snap” into correct aspect sizing immediately
+// Late-loading image safety (loop will re-measure next frame)
 [guyImg, girlImg].forEach((img) => {
-  img.addEventListener("load", () => {
-    // no-op; the render loop will pick up naturalWidth/Height next frame
-  });
-  img.addEventListener("error", () => {
-    // If you see placeholders only on phone, likely a path/CORS/hosting issue.
-    // Keep running so placeholders still show.
-  });
+  img.addEventListener("load", () => {});
+  img.addEventListener("error", () => {});
 });
 
 requestAnimationFrame(render);
